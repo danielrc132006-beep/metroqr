@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0095D8">
+  <title>ManagerLAB · Laboratorio de Metrología</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- ============ BARRA SUPERIOR (fija) ============ -->
+  <header class="barra">
+    <div class="marca">
+      <!-- Si la imagen no existe, se elimina y no se muestra nada en su lugar -->
+      <img class="marca-logo" src="img/imglogo.jfif" alt="Logotipo de thyssenkrupp" onerror="this.remove()">
+      <div class="marca-texto">
+        <strong>ManagerLAB</strong>
+        <span>Laboratorio de Metrología</span>
+      </div>
+    </div>
+
+    <nav class="pestanas" role="tablist" aria-label="Secciones">
+      <button class="pestana" role="tab" aria-selected="true" aria-controls="pantallaPrestamo" data-pantalla="pantallaPrestamo">
+        <i data-lucide="clipboard-check" aria-hidden="true"></i><span>Registrar préstamo</span>
+      </button>
+      <button class="pestana" role="tab" aria-selected="false" aria-controls="pantallaCredencial" data-pantalla="pantallaCredencial">
+        <i data-lucide="id-card" aria-hidden="true"></i><span>Generar credencial</span>
+      </button>
+    </nav>
+
+    <div class="conexion" id="conexion" role="status" aria-live="polite">
+      <span class="conexion-punto" aria-hidden="true"></span>
+      <span class="conexion-texto">Conectando…</span>
+    </div>
+  </header>
+
+  <main>
+    <!-- ============ PANTALLA 1: REGISTRAR PRÉSTAMO ============ -->
+    <section id="pantallaPrestamo" class="pantalla" role="tabpanel">
+
+      <!-- Indicador de progreso de 3 pasos -->
+      <ol class="progreso" id="progreso" aria-label="Progreso del préstamo">
+        <li data-paso="1"><span class="progreso-num">1</span>Escanear</li>
+        <li data-paso="2"><span class="progreso-num">2</span>Elegir instrumento</li>
+        <li data-paso="3"><span class="progreso-num">3</span>Confirmar</li>
+      </ol>
+
+      <!-- Paso 1: escanear credencial -->
+      <div id="paso1" class="paso">
+        <div class="bienvenida">
+          <img class="bienvenida-foto" src="img/imglaboratorio.jpg" alt="Laboratorio de metrología de la planta" onerror="this.remove()">
+          <div class="bienvenida-capa" aria-hidden="true"></div>
+
+          <div class="bienvenida-texto">
+            <h1>Registrar préstamo</h1>
+            <p>Pida al trabajador su credencial y acérquela a la cámara. Los datos aparecen solos.</p>
+
+            <button class="btn btn-claro" id="btnMostrarBusqueda" type="button" aria-expanded="false" aria-controls="formBusqueda">
+              <i data-lucide="search" aria-hidden="true"></i>Buscar por matrícula
+            </button>
+
+            <form class="busqueda" id="formBusqueda" hidden novalidate>
+              <label for="inputBusqueda">Matrícula del trabajador</label>
+              <div class="busqueda-fila">
+                <input id="inputBusqueda" class="campo" inputmode="numeric" maxlength="8" autocomplete="off" placeholder="104523">
+                <button class="btn btn-principal-compacto" type="submit">Buscar</button>
+              </div>
+              <p class="busqueda-error" id="errorBusqueda" role="alert" hidden></p>
+            </form>
+          </div>
+
+          <div class="visor" id="visor">
+            <div id="lector" class="visor-video"></div>
+            <div class="visor-marco" aria-hidden="true"><i></i><i></i><i></i><i></i><span class="visor-linea"></span></div>
+            <p class="visor-mensaje" id="visorMensaje" aria-live="polite">Acerque la credencial</p>
+            <p class="visor-aviso" id="visorAviso" role="alert" hidden><i data-lucide="alert-triangle" aria-hidden="true"></i>QR no reconocido</p>
+            <div class="visor-inactivo" id="visorInactivo" hidden>
+              <i data-lucide="camera" aria-hidden="true"></i>
+              <p id="visorInactivoTexto">Active la cámara para leer la credencial.</p>
+              <button class="btn btn-principal-compacto" id="btnActivarCamara" type="button">Activar cámara</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Paso 2 y 3: trabajador, instrumento, cantidad y confirmación -->
+      <div id="paso2" class="paso" hidden>
+        <div class="paso2-rejilla">
+          <article class="tarjeta trabajador" aria-labelledby="trabNombre">
+            <p class="insignia-ok"><i data-lucide="circle-check" aria-hidden="true"></i>Trabajador identificado</p>
+            <div class="trabajador-cabeza">
+              <div class="iniciales" id="trabIniciales" aria-hidden="true">--</div>
+              <div>
+                <h2 class="trabajador-nombre" id="trabNombre">—</h2>
+                <p class="trabajador-matricula">Matrícula <span id="trabMatricula" class="num">—</span></p>
+              </div>
+            </div>
+            <dl class="trabajador-datos">
+              <div><dt>Área</dt><dd id="trabArea">—</dd></div>
+              <div><dt>Jefe de área</dt><dd id="trabJefe">—</dd></div>
+            </dl>
+            <p class="tiempo" id="tiempoLectura"></p>
+            <button class="btn btn-fantasma" id="btnCambiarTrabajador" type="button">
+              <i data-lucide="scan-line" aria-hidden="true"></i>Escanear otra credencial
+            </button>
+          </article>
+
+          <div class="eleccion">
+            <h2 class="titulo-seccion" id="tituloCatalogo">Elija el instrumento</h2>
+            <div class="catalogo" id="catalogo" role="radiogroup" aria-labelledby="tituloCatalogo">
+              <p class="cargando">Cargando catálogo…</p>
+            </div>
+          </div>
+
+          <div class="tarjeta cantidad">
+            <span class="titulo-seccion" id="tituloCantidad">Cantidad</span>
+            <div class="cantidad-control" role="group" aria-labelledby="tituloCantidad">
+              <button class="cantidad-btn" id="btnMenos" type="button" aria-label="Disminuir cantidad"><i data-lucide="minus" aria-hidden="true"></i></button>
+              <output class="cantidad-valor num" id="cantidadValor" aria-live="polite">1</output>
+              <button class="cantidad-btn" id="btnMas" type="button" aria-label="Aumentar cantidad"><i data-lucide="plus" aria-hidden="true"></i></button>
+            </div>
+            <span class="nota">De 1 a 10 piezas</span>
+          </div>
+        </div>
+
+        <div class="accion">
+          <p class="alerta-error" id="errorPrestamo" role="alert" hidden></p>
+          <p class="ayuda" id="ayudaRegistrar">Elija un instrumento para continuar.</p>
+          <button class="btn btn-principal" id="btnRegistrar" type="button" disabled>
+            <i data-lucide="check" aria-hidden="true"></i><span>Registrar préstamo</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Pantalla de éxito -->
+      <div id="pasoExito" class="paso exito" hidden role="alert">
+        <div class="exito-icono"><i data-lucide="check" aria-hidden="true"></i></div>
+        <h2>Préstamo registrado</h2>
+        <p class="exito-etiqueta">Folio</p>
+        <p class="exito-folio num" id="exitoFolio">ML-0000</p>
+        <p class="exito-resumen" id="exitoResumen"></p>
+        <button class="btn btn-blanco" id="btnNuevoPrestamo" type="button">
+          <i data-lucide="rotate-ccw" aria-hidden="true"></i>Nuevo préstamo
+        </button>
+        <p class="exito-cuenta" id="exitoCuenta">Regresa al inicio en 5 s</p>
+      </div>
+    </section>
+
+    <!-- ============ PANTALLA 2: GENERAR CREDENCIAL ============ -->
+    <section id="pantallaCredencial" class="pantalla" role="tabpanel" hidden>
+      <div class="credencial-rejilla">
+        <form class="tarjeta formulario" id="formCredencial" novalidate>
+          <h1>Generar credencial</h1>
+          <p class="subtitulo">Registre al trabajador y obtenga su credencial con código QR.</p>
+
+          <div class="grupo">
+            <label for="campoMatricula">Matrícula</label>
+            <input id="campoMatricula" class="campo num" inputmode="numeric" maxlength="8" autocomplete="off" placeholder="104523" aria-describedby="msgMatricula">
+            <p class="msg-campo" id="msgMatricula">De 5 a 8 dígitos.</p>
+          </div>
+          <div class="grupo">
+            <label for="campoNombre">Nombre completo</label>
+            <input id="campoNombre" class="campo" maxlength="60" autocomplete="off" placeholder="Laura Méndez Ortiz" aria-describedby="msgNombre">
+            <p class="msg-campo" id="msgNombre">Nombre y apellidos, máximo 60 caracteres.</p>
+          </div>
+          <div class="grupo">
+            <label for="campoArea">Área</label>
+            <select id="campoArea" class="campo" aria-describedby="msgArea"><option value="">Cargando áreas…</option></select>
+            <p class="msg-campo" id="msgArea">Al elegir el área se propone su jefe.</p>
+          </div>
+          <div class="grupo">
+            <label for="campoJefe">Jefe de área</label>
+            <select id="campoJefe" class="campo" aria-describedby="msgJefe"><option value="">Cargando jefes…</option></select>
+            <p class="msg-campo" id="msgJefe"></p>
+          </div>
+
+          <p class="alerta-error" id="errorCredencial" role="alert" hidden></p>
+          <button class="btn btn-principal" id="btnGuardarTrabajador" type="submit">
+            <i data-lucide="qr-code" aria-hidden="true"></i><span>Guardar y generar credencial</span>
+          </button>
+        </form>
+
+        <div class="vista-previa">
+          <h2 class="titulo-seccion">Vista previa</h2>
+          <!-- Credencial de 85.6 × 54 mm. En pantalla se amplía; al imprimir sale a tamaño real. -->
+          <div class="credencial" id="credencial">
+            <div class="credencial-franja">ManagerLAB · Laboratorio de Metrología</div>
+            <div class="credencial-cuerpo">
+              <div class="credencial-datos">
+                <p class="credencial-nombre" id="credNombre">Nombre del trabajador</p>
+                <p class="credencial-etiqueta">Matrícula</p>
+                <p class="credencial-matricula num" id="credMatricula">000000</p>
+                <p class="credencial-etiqueta">Área</p>
+                <p class="credencial-valor" id="credArea">—</p>
+                <p class="credencial-etiqueta">Jefe</p>
+                <p class="credencial-valor" id="credJefe">—</p>
+              </div>
+              <div class="credencial-qr" id="credQR"><span class="credencial-qr-vacio">QR</span></div>
+            </div>
+            <div class="credencial-pie">Prototipo académico ManagerLAB</div>
+          </div>
+          <div class="vista-acciones">
+            <button class="btn btn-secundario" id="btnImprimir" type="button" disabled><i data-lucide="printer" aria-hidden="true"></i>Imprimir credencial</button>
+            <button class="btn btn-secundario" id="btnDescargar" type="button" disabled><i data-lucide="download" aria-hidden="true"></i>Descargar como imagen</button>
+          </div>
+          <p class="nota">Tamaño real: 85.6 × 54 mm. En el diálogo de impresión elija escala 100 %.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div class="aviso-flotante" id="avisoFlotante" role="status" aria-live="polite"></div>
+
+  <!-- Librerías desde CDN con versión fija -->
+  <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <!-- Código propio -->
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
