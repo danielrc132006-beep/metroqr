@@ -16,8 +16,13 @@ const estado = {
   instrumento: null,   // instrumento elegido
   cantidad: 1,
   guardando: false,    // evita registros dobles
-  credencialLista: false
+  credencialLista: false,
+  modo: "prestar",     // "prestar" o "devolver"
+  prestamos: null,     // historial de la hoja Prestamos (null mientras carga)
+  devolviendo: false   // evita devoluciones dobles
 };
+
+const HORAS_TURNO = 8;   // un préstamo con más horas fuera se marca en ámbar
 
 const CANTIDAD_MIN = 1;
 const CANTIDAD_MAX = 10;
@@ -70,6 +75,7 @@ async function cargarDatosIniciales() {
 
   if (areas.status === "fulfilled") { estado.areas = areas.value; pintarListasAreas(); }
   if (personal.status === "fulfilled") estado.personal = personal.value;
+  cargarPrestamos().catch(() => {});   // el historial se pide aparte para no retrasar el arranque
 }
 
 // Revisa la conexión cada minuto
@@ -80,12 +86,12 @@ window.addEventListener("offline", () => marcarConexion(false));
    2. Navegación entre pestañas y pasos
    --------------------------------------------------------- */
 
-document.querySelectorAll(".pestana").forEach((boton) => {
+document.querySelectorAll(".pestana[data-pantalla]").forEach((boton) => {
   boton.addEventListener("click", () => mostrarPantalla(boton.dataset.pantalla));
 });
 
 function mostrarPantalla(idPantalla) {
-  document.querySelectorAll(".pestana").forEach((b) => b.setAttribute("aria-selected", b.dataset.pantalla === idPantalla));
+  document.querySelectorAll(".pestana[data-pantalla]").forEach((b) => b.setAttribute("aria-selected", b.dataset.pantalla === idPantalla));
   document.querySelectorAll(".pantalla").forEach((p) => (p.hidden = p.id !== idPantalla));
   // La cámara solo se usa en el paso 1 del préstamo
   if (idPantalla === "pantallaPrestamo" && !$("paso1").hidden) iniciarCamara();
@@ -200,7 +206,14 @@ function identificarTrabajador(trabajador, inicio) {
   pintarCatalogo();
   actualizarCantidad();
   $("errorPrestamo").hidden = true;
+  $("errorDevolucion").hidden = true;
+  aplicarModo();
   irAPaso(2);
+  // Historial: se muestra lo que ya hay y se actualiza con la hoja
+  pintarHistorial();
+  cargarPrestamos().then(pintarHistorial).catch(() => {
+    if (!estado.prestamos) $("historial").innerHTML = '<p class="nota">No se pudo cargar el historial.</p>';
+  });
   // Se mide cuando el navegador ya dibujó los datos en pantalla
   requestAnimationFrame(() => requestAnimationFrame(() => {
     const segundos = (performance.now() - inicio) / 1000;
@@ -355,12 +368,24 @@ function mostrarErrorPrestamo(mensaje) {
 let temporizadorRegreso = null;
 function mostrarExito(respuesta) {
   const t = respuesta.trabajador || estado.trabajador;
+  // Se agrega al historial local para que aparezca sin recargar
+  if (estado.prestamos) estado.prestamos.push(normalizarPrestamo({
+    folio: respuesta.folio, fecha: respuesta.fecha, hora: respuesta.hora, matricula: t.matricula,
+    nombre: t.nombre, area: t.area, jefe: t.jefe, instrumento: estado.instrumento.instrumento, cantidad: estado.cantidad, estado: "Prestado"
+  }));
+  $("exitoTitulo").textContent = "Préstamo registrado";
+  $("exitoEtiqueta").textContent = "Folio";
+  $("exitoBoton").textContent = "Nuevo préstamo";
   $("exitoFolio").textContent = respuesta.folio;
   $("exitoResumen").textContent =
     `${estado.cantidad} × ${estado.instrumento.instrumento} para ${t.nombre} (${t.matricula}) · ${respuesta.fecha} a las ${respuesta.hora} h`;
   irAPaso("exito");
-  $("btnNuevoPrestamo").focus();
+  iniciarCuentaRegresiva();
+}
 
+// Regresa al paso 1 después de 5 segundos en la pantalla de éxito
+function iniciarCuentaRegresiva() {
+  $("btnNuevoPrestamo").focus();
   let segundos = 5;
   $("exitoCuenta").textContent = `Regresa al inicio en ${segundos} s`;
   clearInterval(temporizadorRegreso);
@@ -383,7 +408,196 @@ function reiniciarPrestamo() {
 $("btnNuevoPrestamo").addEventListener("click", reiniciarPrestamo);
 
 /* ---------------------------------------------------------
-   7. Generar credencial
+   7. Devoluciones e historial del trabajador
+   --------------------------------------------------------- */
+
+// Selector Prestar / Devolver de la pantalla de inicio
+document.querySelectorAll(".modo button").forEach((boton) => boton.addEventListener("click", () => {
+  estado.modo = boton.dataset.modo;
+  aplicarModo();
+}));
+
+// Cambia textos y secciones según el modo elegido
+function aplicarModo() {
+  const devolver = estado.modo === "devolver";
+  document.querySelectorAll(".modo button").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.modo === estado.modo)));
+  $("tituloInicio").textContent = devolver ? "Registrar devolución" : "Registrar préstamo";
+  $("textoInicio").textContent = devolver
+    ? "Escanee la credencial de quien regresa el instrumento para ver lo que tiene pendiente."
+    : "Pida al trabajador su credencial y acérquela a la cámara. Los datos aparecen solos.";
+  $("progreso").hidden = devolver;   // los 3 pasos son del préstamo
+  document.querySelector(".eleccion").hidden = devolver;
+  document.querySelector(".cantidad").hidden = devolver;
+  $("accionPrestamo").hidden = devolver;
+  $("panelDevolucion").hidden = !devolver;
+  $("accionDevolucion").hidden = !devolver;
+  if (estado.trabajador) pintarHistorial();
+}
+
+// Pide a la API todos los préstamos (incluye estado y datos de devolución)
+async function cargarPrestamos() {
+  const datos = await consultarApi("prestamos");
+  estado.prestamos = datos.map(normalizarPrestamo);
+  return estado.prestamos;
+}
+
+// Los préstamos anteriores a la columna "estado" se consideran prestados
+function normalizarPrestamo(p) {
+  return { ...p, matricula: String(p.matricula), cantidad: Number(p.cantidad) || 0, estado: p.estado || "Prestado" };
+}
+
+// Compara matrículas ignorando ceros a la izquierda (igual que el servidor)
+const mismaMatricula = (a, b) => String(a).replace(/^0+/, "") === String(b).replace(/^0+/, "");
+
+// Horas y minutos desde que salió el instrumento: "2 h 15 min", "3 d"
+function tiempoFuera(p) {
+  const minutos = Math.max(0, Math.round((Date.now() - new Date(`${p.fecha}T${p.hora}:00`)) / 60000));
+  if (isNaN(minutos)) return { texto: "—", vencido: false };
+  const texto = minutos < 60 ? `${minutos} min`
+    : minutos < 1440 ? `${Math.floor(minutos / 60)} h ${minutos % 60} min`
+    : `${Math.floor(minutos / 1440)} d ${Math.floor((minutos % 1440) / 60)} h`;
+  return { texto, vencido: minutos > HORAS_TURNO * 60 };
+}
+
+function pendientesDelTrabajador() {
+  if (!estado.prestamos || !estado.trabajador) return [];
+  return estado.prestamos
+    .filter((p) => mismaMatricula(p.matricula, estado.trabajador.matricula) && p.estado !== "Devuelto")
+    .sort((a, b) => (a.fecha + a.hora).localeCompare(b.fecha + b.hora));   // el más antiguo primero
+}
+
+// Crea un elemento con clase y texto seguro (textContent)
+function crear(etiqueta, clase, texto) {
+  const el = document.createElement(etiqueta);
+  if (clase) el.className = clase;
+  if (texto !== undefined) el.textContent = texto;
+  return el;
+}
+
+// Fila de un préstamo pendiente con su botón "Devolver"
+function crearFilaPendiente(p, grande) {
+  const fila = crear("div", "pendiente" + (grande ? " grande" : ""));
+  fila.setAttribute("role", "listitem");
+  const t = tiempoFuera(p);
+  if (t.vencido) fila.classList.add("vencido");
+  const info = crear("div", "pendiente-info");
+  info.append(crear("strong", "", `${p.cantidad} × ${p.instrumento}`), crear("span", "pendiente-detalle", `${p.folio} · salió ${p.fecha} ${p.hora} · hace ${t.texto}`));
+  if (t.vencido) info.append(crear("span", "pendiente-alerta", `Lleva más de ${HORAS_TURNO} h fuera`));
+  const boton = crear("button", "btn btn-secundario pendiente-btn");
+  boton.type = "button";
+  boton.innerHTML = '<i data-lucide="log-in" aria-hidden="true"></i><span>Devolver</span>';
+  boton.setAttribute("aria-label", `Devolver ${p.instrumento}, folio ${p.folio}`);
+  boton.addEventListener("click", () => devolverPrestamos([p], boton));
+  fila.append(info, boton);
+  return fila;
+}
+
+// Pinta el historial en la tarjeta del trabajador y, en modo devolución, la lista de pendientes
+function pintarHistorial() {
+  const caja = $("historial");
+  if (!estado.trabajador) return;
+  if (!estado.prestamos) { caja.innerHTML = '<p class="nota">Cargando historial…</p>'; return; }
+
+  const devolver = estado.modo === "devolver";
+  const pendientes = pendientesDelTrabajador();
+  const recientes = estado.prestamos
+    .filter((p) => mismaMatricula(p.matricula, estado.trabajador.matricula))
+    .sort((a, b) => (b.fecha + b.hora + b.folio).localeCompare(a.fecha + a.hora + a.folio))
+    .slice(0, 3);
+  caja.innerHTML = "";
+
+  // Aviso de pendientes (en modo préstamo; en modo devolución van en el panel grande)
+  if (pendientes.length && !devolver) {
+    const aviso = crear("div", "aviso-pendientes");
+    aviso.append(crear("p", "aviso-pendientes-titulo", pendientes.length === 1 ? "Tiene 1 instrumento sin devolver" : `Tiene ${pendientes.length} instrumentos sin devolver`));
+    const lista = crear("div", "pendientes");
+    lista.setAttribute("role", "list");
+    pendientes.forEach((p) => lista.append(crearFilaPendiente(p, false)));
+    aviso.append(lista);
+    caja.append(aviso);
+  }
+
+  if (!recientes.length) caja.append(crear("p", "nota", "Es su primer préstamo."));
+  else {
+    const lista = crear("ul", "recientes");
+    recientes.forEach((p) => {
+      const li = crear("li", "reciente");
+      const texto = crear("span", "reciente-texto");
+      texto.append(crear("span", "", `${p.cantidad} × ${p.instrumento}`), crear("small", "", `${p.fecha} · ${p.folio}`));
+      const devuelto = p.estado === "Devuelto";
+      li.append(texto, crear("span", "insignia-estado " + (devuelto ? "devuelto" : "prestado"), devuelto ? "Devuelto" : "Prestado"));
+      lista.append(li);
+    });
+    caja.append(crear("p", "recientes-titulo", "Últimos préstamos"), lista);
+  }
+
+  // Panel grande del modo devolución
+  const panel = $("pendientes");
+  panel.innerHTML = "";
+  if (!pendientes.length) panel.append(crear("p", "vacio-pendientes", "No tiene instrumentos pendientes de devolver."));
+  pendientes.forEach((p) => panel.append(crearFilaPendiente(p, true)));
+  $("btnDevolverTodos").disabled = !pendientes.length || estado.devolviendo;
+  $("btnDevolverTodos").querySelector("span").textContent = pendientes.length > 1 ? `Devolver todos (${pendientes.length})` : pendientes.length === 1 ? `Devolver ${pendientes[0].folio}` : "Sin pendientes";
+  pintarIconos();
+}
+
+$("btnDevolverTodos").addEventListener("click", () => devolverPrestamos(pendientesDelTrabajador(), $("btnDevolverTodos")));
+
+// El iPad recuerda quién recibe, para no escribirlo en cada devolución
+try { $("campoRecibio").value = localStorage.getItem("managerlab.recibio") || ""; } catch (e) { /* sin almacenamiento */ }
+$("campoRecibio").addEventListener("input", () => {
+  try { localStorage.setItem("managerlab.recibio", $("campoRecibio").value.trim()); } catch (e) { /* sin almacenamiento */ }
+});
+
+// Envía una devolución por cada préstamo (uno tras otro) y actualiza la pantalla
+async function devolverPrestamos(lista, boton) {
+  if (estado.devolviendo || !lista.length) return;
+  estado.devolviendo = true;
+  const textoOriginal = boton.querySelector("span").textContent;
+  boton.disabled = true;
+  $("errorDevolucion").hidden = true;
+  const recibio = $("campoRecibio").value.trim();
+  const devueltos = [];
+
+  try {
+    for (const [i, p] of lista.entries()) {
+      boton.querySelector("span").textContent = lista.length > 1 ? `Guardando ${i + 1} de ${lista.length}...` : "Guardando...";
+      const respuesta = await enviarApi({ accion: "devolucion", folio: p.folio, recibio });
+      if (!respuesta.ok) throw new Error(respuesta.error || "La API rechazó la devolución.");
+      Object.assign(p, { estado: "Devuelto", fecha_devolucion: respuesta.fecha_devolucion, hora_devolucion: respuesta.hora_devolucion, recibio });
+      devueltos.push(p);
+    }
+  } catch (error) {
+    if (error instanceof TypeError) marcarConexion(false);   // falla de red
+    const mensaje = error instanceof TypeError ? "No se pudo conectar con el servidor. Revise la conexión e intente de nuevo." : error.message;
+    $("errorDevolucion").textContent = `No se registró la devolución: ${mensaje}`;
+    $("errorDevolucion").hidden = estado.modo !== "devolver";
+    if (estado.modo !== "devolver") mostrarAviso(`No se registró la devolución: ${mensaje}`);
+  } finally {
+    estado.devolviendo = false;
+    if (boton.isConnected) { boton.disabled = false; boton.querySelector("span").textContent = textoOriginal; }
+  }
+
+  if (!devueltos.length) return pintarHistorial();
+  // En modo devolución, si ya no queda nada pendiente se muestra la pantalla de éxito
+  if (estado.modo === "devolver" && !pendientesDelTrabajador().length) return mostrarExitoDevolucion(devueltos);
+  mostrarAviso(devueltos.length === 1 ? `${devueltos[0].folio} devuelto` : `${devueltos.length} instrumentos devueltos`);
+  pintarHistorial();
+}
+
+function mostrarExitoDevolucion(devueltos) {
+  const ultimo = devueltos[devueltos.length - 1];
+  $("exitoTitulo").textContent = "Devolución registrada";
+  $("exitoEtiqueta").textContent = devueltos.length === 1 ? "Folio" : "Instrumentos devueltos";
+  $("exitoFolio").textContent = devueltos.length === 1 ? ultimo.folio : devueltos.length;
+  $("exitoResumen").textContent = `${devueltos.map((p) => `${p.cantidad} × ${p.instrumento}`).join(", ")} de ${estado.trabajador.nombre} · ${ultimo.fecha_devolucion} a las ${ultimo.hora_devolucion} h`;
+  $("exitoBoton").textContent = "Nueva devolución";
+  irAPaso("exito");
+  iniciarCuentaRegresiva();
+}
+
+/* ---------------------------------------------------------
+   8. Generar credencial
    --------------------------------------------------------- */
 
 // Llena las listas de área y jefe con los datos de la API
@@ -556,7 +770,7 @@ function descargarCredencial() {
 }
 
 /* ---------------------------------------------------------
-   8. Utilidades
+   9. Utilidades
    --------------------------------------------------------- */
 
 // Convierte los <i data-lucide> en íconos SVG
@@ -577,6 +791,8 @@ console.assert(leerCredencial('{"m":"104523","n":"Laura Méndez Ortiz","a":"Metr
 console.assert(leerCredencial('﻿{"m":"104523","n":"Ana López","a":"A","j":"J"}') !== null, "QR con BOM");
 console.assert(leerCredencial('{"m":"12","n":"Ana","a":"A","j":"J"}') === null, "matrícula corta");
 console.assert(leerCredencial("https://ejemplo.com") === null, "texto que no es JSON");
+console.assert(mismaMatricula("097815", "97815") && !mismaMatricula("104523", "104524"), "matrículas con ceros");
+console.assert(tiempoFuera({ fecha: "2000-01-01", hora: "08:00" }).vencido === true, "préstamo vencido");
 console.assert(leerCredencial(textoParaQR({ m: "104523", n: "Begoña Núñez", a: "Metrología", j: "Ing. Raúl" }))?.nombre === "Begoña Núñez", "acentos en el QR");
 
 /* ---------------------------------------------------------

@@ -13,6 +13,7 @@ const tablero = {
   verTodos: false
 };
 const FILAS_INICIALES = 15;
+const HORAS_TURNO = 8;   // un préstamo con más horas fuera se marca en ámbar
 const NOMBRES_DIA = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"];
 
 /* ---------------------------------------------------------
@@ -44,7 +45,7 @@ function normalizarPrestamo(p) {
   if (fecha.includes("T")) fecha = fechaISO(new Date(fecha));
   let hora = String(p.hora || "");
   if (hora.includes("T")) { const h = new Date(hora); hora = `${String(h.getHours()).padStart(2, "0")}:${String(h.getMinutes()).padStart(2, "0")}`; }
-  return { ...p, fecha: fecha.slice(0, 10), hora: hora.slice(0, 5), matricula: String(p.matricula), cantidad: Number(p.cantidad) || 0 };
+  return { ...p, fecha: fecha.slice(0, 10), hora: hora.slice(0, 5), matricula: String(p.matricula), cantidad: Number(p.cantidad) || 0, estado: p.estado || "Prestado" };
 }
 
 async function cargarDatos() {
@@ -98,6 +99,7 @@ function pintarTodo() {
   pintarActividad(lista);
   pintarAreas(lista);
   pintarTabla(lista);
+  pintarFuera();
   if (window.lucide) lucide.createIcons();
 }
 
@@ -228,10 +230,52 @@ function pintarTabla(lista) {
     ? visibles.map((p) => `<tr>
         <td class="folio">${escapar(p.folio)}</td><td>${escapar(p.fecha)}</td><td>${escapar(p.hora)}</td>
         <td>${escapar(p.nombre)}<span class="sub">${escapar(p.matricula)}</span></td>
-        <td>${escapar(p.area)}</td><td>${escapar(p.instrumento)}</td><td class="num-col">${p.cantidad}</td></tr>`).join("")
-    : `<tr class="vacio-fila"><td colspan="7">${texto ? "Ningún préstamo coincide con la búsqueda." : "No hay préstamos en este periodo. Pruebe con “Todo”."}</td></tr>`;
+        <td>${escapar(p.area)}</td><td>${escapar(p.instrumento)}</td><td class="num-col">${p.cantidad}</td><td>${insigniaEstado(p)}</td></tr>`).join("")
+    : `<tr class="vacio-fila"><td colspan="8">${texto ? "Ningún préstamo coincide con la búsqueda." : "No hay préstamos en este periodo. Pruebe con “Todo”."}</td></tr>`;
   $("btnVerMas").hidden = filas.length <= FILAS_INICIALES;
   $("btnVerMas").textContent = tablero.verTodos ? "Ver menos" : `Ver los ${filas.length}`;
+}
+
+// Insignia Prestado / Devuelto (al pasar el mouse muestra cuándo se devolvió)
+function insigniaEstado(p) {
+  const devuelto = p.estado === "Devuelto";
+  const titulo = devuelto ? ` title="Devuelto ${escapar(p.fecha_devolucion || "")} ${escapar(p.hora_devolucion || "")}"` : "";
+  return `<span class="insignia-estado ${devuelto ? "devuelto" : "prestado"}"${titulo}>${devuelto ? "Devuelto" : "Prestado"}</span>`;
+}
+
+// Horas y minutos desde que salió el instrumento: "2 h 15 min", "3 d 4 h"
+function tiempoFuera(p) {
+  const minutos = Math.max(0, Math.round((Date.now() - new Date(`${p.fecha}T${p.hora}:00`)) / 60000));
+  if (isNaN(minutos)) return { texto: "—", vencido: false };
+  const texto = minutos < 60 ? `${minutos} min`
+    : minutos < 1440 ? `${Math.floor(minutos / 60)} h ${minutos % 60} min`
+    : `${Math.floor(minutos / 1440)} d ${Math.floor((minutos % 1440) / 60)} h`;
+  return { texto, vencido: minutos > HORAS_TURNO * 60 };
+}
+
+// Fuera del laboratorio: todo lo que sigue prestado, del más antiguo al más reciente.
+// No depende del periodo elegido: muestra el estado actual.
+function pintarFuera() {
+  const fuera = tablero.prestamos
+    .filter((p) => p.estado !== "Devuelto")
+    .sort((a, b) => (a.fecha + a.hora).localeCompare(b.fecha + b.hora));
+  const piezas = fuera.reduce((s, p) => s + p.cantidad, 0);
+  const vencidos = fuera.filter((p) => tiempoFuera(p).vencido).length;
+
+  $("notaFuera").textContent = fuera.length
+    ? `${plural(fuera.length, "préstamo abierto", "préstamos abiertos")} · ${plural(piezas, "pieza", "piezas")} fuera ahora${vencidos ? ` · ${vencidos} con más de ${HORAS_TURNO} h` : ""}`
+    : "Todos los instrumentos están en el laboratorio.";
+  $("filasFuera").innerHTML = fuera.length
+    ? fuera.map((p) => {
+        const t = tiempoFuera(p);
+        const icono = t.vencido ? '<i data-lucide="clock" aria-hidden="true"></i>' : "";
+        return `<tr>
+          <td class="folio">${escapar(p.folio)}</td><td>${escapar(p.instrumento)}</td><td class="num-col">${p.cantidad}</td>
+          <td>${escapar(p.nombre)}<span class="sub">${escapar(p.matricula)}</span></td><td>${escapar(p.area)}</td>
+          <td>${escapar(p.fecha)}<span class="sub">${escapar(p.hora)} h</span></td>
+          <td><span class="tiempo-fuera${t.vencido ? " vencido" : ""}">${icono}${escapar(t.texto)}</span></td></tr>`;
+      }).join("")
+    : '<tr class="vacio-fila"><td colspan="7">Nada fuera del laboratorio en este momento.</td></tr>';
 }
 
 /* ---------------------------------------------------------
@@ -269,7 +313,7 @@ $("btnVerMas").addEventListener("click", () => { tablero.verTodos = !tablero.ver
 
 // Exporta los préstamos del periodo a CSV (Excel lo abre con acentos gracias al BOM)
 $("btnExportar").addEventListener("click", () => {
-  const columnas = ["folio", "fecha", "hora", "matricula", "nombre", "area", "jefe", "instrumento", "cantidad"];
+  const columnas = ["folio", "fecha", "hora", "matricula", "nombre", "area", "jefe", "instrumento", "cantidad", "estado", "fecha_devolucion", "hora_devolucion", "recibio"];
   const lineas = prestamosDelPeriodo().map((p) => columnas.map((c) => `"${String(p[c] ?? "").replace(/"/g, '""')}"`).join(","));
   const enlace = document.createElement("a");
   enlace.href = URL.createObjectURL(new Blob(["﻿" + [columnas.join(","), ...lineas].join("\r\n")], { type: "text/csv;charset=utf-8" }));

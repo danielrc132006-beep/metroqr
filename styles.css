@@ -446,3 +446,58 @@ select.campo option { background: var(--lienzo); color: var(--texto); }
 }
 .progreso-num svg.lucide { width: 16px; height: 16px; stroke-width: 3; }
 .visor-mensaje:empty { display: none; }
+
+/* ---------- Devoluciones e historial ---------- */
+:root { --ambar-texto: #F2C46B; }   /* ámbar aclarado para texto sobre fondo oscuro (AA) */
+
+/* Selector Prestar / Devolver */
+.modo { display: inline-flex; gap: 4px; padding: 4px; border-radius: 999px; background: var(--vidrio); box-shadow: var(--linea); }
+.modo button {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 48px; padding: 0 20px; border: 0; border-radius: 999px;
+  background: transparent; color: var(--texto-suave); font-weight: 500;
+  transition: background-color var(--dur) var(--curva), color var(--dur) var(--curva);
+}
+.modo button svg.lucide { width: 20px; height: 20px; }
+.modo button:hover { background: var(--vidrio-claro); color: var(--blanco); }
+.modo button[aria-checked="true"] { background: var(--vidrio-activo); color: var(--blanco); box-shadow: inset 0 1px 1px rgba(216, 236, 248, .2), var(--linea); }
+
+/* Historial en la tarjeta del trabajador */
+.historial { display: grid; gap: 12px; padding-top: 14px; box-shadow: inset 0 1px 0 var(--borde); }
+.historial-titulo { margin: 0; font-family: var(--fuente-mono); font-size: 12px; font-weight: 400; letter-spacing: .1em; text-transform: uppercase; color: var(--texto-ayuda); }
+.aviso-pendientes { display: grid; gap: 10px; padding: 12px; border-radius: 12px; background: rgba(230, 155, 0, .12); box-shadow: inset 0 0 0 1px rgba(242, 196, 107, .35); }
+.aviso-pendientes-titulo { color: var(--ambar-texto); font-weight: 600; font-size: 15px; }
+.recientes-titulo { font-size: 14px; color: var(--texto-ayuda); }
+.recientes { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.reciente { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.reciente-texto { display: grid; min-width: 0; font-size: 15px; color: var(--texto); }
+.reciente-texto small { font-family: var(--fuente-mono); font-size: 12px; color: var(--texto-ayuda); }
+.insignia-estado { flex: none; padding: 3px 8px; border-radius: var(--radio-chico); font-size: 13px; font-weight: 500; }
+.insignia-estado.prestado { background: rgba(230, 155, 0, .14); color: var(--ambar-texto); box-shadow: inset 0 0 0 1px rgba(242, 196, 107, .3); }
+.insignia-estado.devuelto { background: rgba(46, 125, 50, .18); color: var(--verde-texto); box-shadow: inset 0 0 0 1px rgba(127, 203, 131, .25); }
+
+/* Filas de préstamos pendientes */
+.pendientes { display: grid; gap: 8px; }
+.pendiente { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.pendiente-info { display: grid; gap: 2px; min-width: 0; }
+.pendiente-info strong { font-weight: 600; color: var(--texto-titulo); font-size: 15px; }
+.pendiente-detalle { font-family: var(--fuente-mono); font-size: 12px; color: var(--texto-ayuda); }
+.pendiente-alerta { font-size: 13px; font-weight: 500; color: var(--ambar-texto); }
+.pendiente-btn { flex: none; min-height: 44px; padding: 0 16px; font-size: 15px; }
+.pendiente-btn svg.lucide { width: 18px; height: 18px; }
+.pendiente.grande { padding: 16px 18px; border-radius: 12px; background: rgba(186, 214, 247, .04); box-shadow: var(--linea); }
+.pendiente.grande .pendiente-info strong { font-size: 18px; }
+.pendiente.grande .pendiente-detalle { font-size: 13px; }
+.pendiente.grande .pendiente-btn { min-height: 52px; padding: 0 22px; font-size: 16px; }
+.pendiente.grande.vencido { box-shadow: inset 0 0 0 1px rgba(242, 196, 107, .45); }
+
+/* Panel del modo devolución (ocupa el lugar del catálogo) */
+.devolucion { grid-area: eleccion; padding: 24px; display: grid; gap: 4px; align-content: start; }
+.devolucion .grupo { max-width: 420px; }
+.vacio-pendientes { padding: 24px 0; color: var(--texto-ayuda); text-align: center; }
+@media (max-width: 640px) {
+  .pendiente { flex-direction: column; align-items: stretch; }
+}
+@media (max-width: 1000px) { .trabajador .historial { grid-column: 1 / -1; } }
+/* En la tarjeta angosta del trabajador, el botón va debajo del texto */
+.pendiente:not(.grande) { flex-direction: column; align-items: stretch; gap: 8px; }
+.pendiente:not(.grande) .pendiente-btn { align-self: flex-start; }

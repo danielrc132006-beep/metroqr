@@ -61,8 +61,13 @@
         <div class="bienvenida">
 
           <div class="bienvenida-texto">
-            <h1>Registrar préstamo</h1>
-            <p>Pida al trabajador su credencial y acérquela a la cámara. Los datos aparecen solos.</p>
+            <!-- Selector de modo: prestar o devolver instrumentos -->
+            <div class="modo" role="radiogroup" aria-label="Qué desea registrar">
+              <button type="button" role="radio" aria-checked="true" data-modo="prestar"><i data-lucide="log-out" aria-hidden="true"></i>Prestar</button>
+              <button type="button" role="radio" aria-checked="false" data-modo="devolver"><i data-lucide="log-in" aria-hidden="true"></i>Devolver</button>
+            </div>
+            <h1 id="tituloInicio">Registrar préstamo</h1>
+            <p id="textoInicio">Pida al trabajador su credencial y acérquela a la cámara. Los datos aparecen solos.</p>
 
             <button class="btn btn-claro" id="btnMostrarBusqueda" type="button" aria-expanded="false" aria-controls="formBusqueda">
               <i data-lucide="search" aria-hidden="true"></i>Buscar por matrícula
@@ -108,6 +113,11 @@
               <div><dt>Área</dt><dd id="trabArea">—</dd></div>
               <div><dt>Jefe de área</dt><dd id="trabJefe">—</dd></div>
             </dl>
+            <!-- Historial del trabajador: pendientes y últimos préstamos -->
+            <section class="historial" aria-labelledby="tituloHistorial">
+              <h3 class="historial-titulo" id="tituloHistorial">Historial</h3>
+              <div id="historial" aria-live="polite"><p class="nota">Cargando historial…</p></div>
+            </section>
             <p class="tiempo" id="tiempoLectura"></p>
             <button class="btn btn-fantasma" id="btnCambiarTrabajador" type="button">
               <i data-lucide="scan-line" aria-hidden="true"></i>Escanear otra credencial
@@ -130,9 +140,26 @@
             </div>
             <span class="nota">De 1 a 10 piezas</span>
           </div>
+
+          <!-- Modo devolución: préstamos abiertos del trabajador -->
+          <div class="tarjeta devolucion" id="panelDevolucion" hidden>
+            <h2 class="titulo-seccion" id="tituloPendientes">Préstamos pendientes</h2>
+            <div class="grupo">
+              <label for="campoRecibio">Recibió (opcional)</label>
+              <input id="campoRecibio" class="campo" maxlength="60" autocomplete="off" placeholder="Nombre de quien recibe">
+            </div>
+            <div class="pendientes" id="pendientes" role="list" aria-labelledby="tituloPendientes"></div>
+          </div>
         </div>
 
-        <div class="accion">
+        <div class="accion" id="accionDevolucion" hidden>
+          <p class="alerta-error" id="errorDevolucion" role="alert" hidden></p>
+          <button class="btn btn-principal" id="btnDevolverTodos" type="button" disabled>
+            <i data-lucide="log-in" aria-hidden="true"></i><span>Devolver todos</span>
+          </button>
+        </div>
+
+        <div class="accion" id="accionPrestamo">
           <p class="alerta-error" id="errorPrestamo" role="alert" hidden></p>
           <p class="ayuda" id="ayudaRegistrar">Elija un instrumento para continuar.</p>
           <button class="btn btn-principal" id="btnRegistrar" type="button" disabled>
@@ -144,12 +171,12 @@
       <!-- Pantalla de éxito -->
       <div id="pasoExito" class="paso exito" hidden role="alert">
         <div class="exito-icono"><i data-lucide="check" aria-hidden="true"></i></div>
-        <h2>Préstamo registrado</h2>
-        <p class="exito-etiqueta">Folio</p>
+        <h2 id="exitoTitulo">Préstamo registrado</h2>
+        <p class="exito-etiqueta" id="exitoEtiqueta">Folio</p>
         <p class="exito-folio num" id="exitoFolio">ML-0000</p>
         <p class="exito-resumen" id="exitoResumen"></p>
         <button class="btn btn-blanco" id="btnNuevoPrestamo" type="button">
-          <i data-lucide="rotate-ccw" aria-hidden="true"></i>Nuevo préstamo
+          <i data-lucide="rotate-ccw" aria-hidden="true"></i><span id="exitoBoton">Nuevo préstamo</span>
         </button>
         <p class="exito-cuenta" id="exitoCuenta">Regresa al inicio en 5 s</p>
       </div>

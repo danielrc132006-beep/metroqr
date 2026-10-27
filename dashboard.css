@@ -135,3 +135,11 @@
   .buscador .campo { width: 100%; }
   .indicador-valor { font-size: 34px; }
 }
+
+/* ---------- Fuera del laboratorio y estado ---------- */
+.insignia-estado { display: inline-block; padding: 3px 8px; border-radius: var(--radio-chico); font-size: 13px; font-weight: 500; }
+.insignia-estado.prestado { background: rgba(230, 155, 0, .14); color: var(--ambar-texto); box-shadow: inset 0 0 0 1px rgba(242, 196, 107, .3); }
+.insignia-estado.devuelto { background: rgba(46, 125, 50, .18); color: var(--verde-texto); box-shadow: inset 0 0 0 1px rgba(127, 203, 131, .25); }
+.tiempo-fuera { display: inline-flex; align-items: center; gap: 6px; font-weight: 500; color: var(--texto); font-variant-numeric: tabular-nums; }
+.tiempo-fuera.vencido { color: var(--ambar-texto); }
+.tiempo-fuera svg.lucide { width: 18px; height: 18px; }

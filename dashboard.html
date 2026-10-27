@@ -84,6 +84,24 @@
       </article>
     </section>
 
+    <!-- Lo que está prestado en este momento (no depende del periodo) -->
+    <section class="tarjeta panel" aria-labelledby="tituloFuera">
+      <header class="panel-cabeza">
+        <div>
+          <h2 id="tituloFuera">Fuera del laboratorio</h2>
+          <p class="nota" id="notaFuera">Cargando…</p>
+        </div>
+      </header>
+      <div class="tabla-marco">
+        <table class="tabla">
+          <thead>
+            <tr><th>Folio</th><th>Instrumento</th><th class="num-col">Cant.</th><th>Trabajador</th><th>Área</th><th>Salió</th><th>Tiempo fuera</th></tr>
+          </thead>
+          <tbody id="filasFuera"></tbody>
+        </table>
+      </div>
+    </section>
+
     <!-- Gráficas -->
     <section class="graficas">
       <article class="tarjeta panel panel-ancho">
@@ -136,7 +154,7 @@
       <div class="tabla-marco">
         <table class="tabla">
           <thead>
-            <tr><th>Folio</th><th>Fecha</th><th>Hora</th><th>Trabajador</th><th>Área</th><th>Instrumento</th><th class="num-col">Cant.</th></tr>
+            <tr><th>Folio</th><th>Fecha</th><th>Hora</th><th>Trabajador</th><th>Área</th><th>Instrumento</th><th class="num-col">Cant.</th><th>Estado</th></tr>
           </thead>
           <tbody id="filas"></tbody>
         </table>
