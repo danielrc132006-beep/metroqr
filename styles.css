@@ -214,11 +214,9 @@ select.campo option { background: var(--lienzo); color: var(--texto); }
   position: relative; overflow: hidden; isolation: isolate;
   display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 32px; align-items: center;
   min-height: 560px; padding: 40px; border-radius: var(--radio);
-  background: var(--placa);   /* si la foto no existe queda un fondo liso */
+  background: var(--vidrio);
   color: var(--blanco); box-shadow: var(--sombra-modal);
 }
-.bienvenida-foto { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 60% 50%; z-index: -2; }   /* centra las manos con el calibrador */
-.bienvenida-capa { position: absolute; inset: 0; z-index: -1; background: linear-gradient(100deg, rgba(5, 6, 15, .94) 0%, rgba(5, 6, 15, .72) 55%, rgba(5, 6, 15, .5) 100%); }
 .bienvenida-texto { display: grid; gap: 18px; justify-items: start; }
 .bienvenida-texto h1 { font-size: 44px; line-height: 1.12; background: var(--degradado-cielo); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .bienvenida-texto > p { font-size: 18px; max-width: 34ch; color: var(--texto-suave); }
