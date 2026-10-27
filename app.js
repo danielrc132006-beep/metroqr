@@ -19,7 +19,8 @@ const estado = {
   credencialLista: false,
   modo: "prestar",     // "prestar" o "devolver"
   prestamos: null,     // historial de la hoja Prestamos (null mientras carga)
-  devolviendo: false   // evita devoluciones dobles
+  devolviendo: false,  // evita devoluciones dobles
+  inicioRegistro: null // momento en que se leyó la credencial (para el cronómetro)
 };
 
 const HORAS_TURNO = 8;   // un préstamo con más horas fuera se marca en ámbar
@@ -209,6 +210,9 @@ function identificarTrabajador(trabajador, inicio) {
   $("errorDevolucion").hidden = true;
   aplicarModo();
   irAPaso(2);
+  // El cronómetro corre desde la lectura de la credencial hasta que se toca Registrar
+  estado.inicioRegistro = inicio;
+  if (estado.modo === "prestar") iniciarCronometro(); else detenerCronometro();
   // Historial: se muestra lo que ya hay y se actualiza con la hoja
   pintarHistorial();
   cargarPrestamos().then(pintarHistorial).catch(() => {
@@ -335,24 +339,33 @@ $("btnRegistrar").addEventListener("click", registrarPrestamo);
 async function registrarPrestamo() {
   if (estado.guardando || !estado.trabajador || !estado.instrumento) return;
   estado.guardando = true;
+  // Se detiene el cronómetro: el encargado ya confirmó el préstamo
+  detenerCronometro();
+  const duracion = segundosDesde(estado.inicioRegistro);
+  $("cronometroValor").textContent = formatearDuracion(duracion);
   const boton = $("btnRegistrar");
   boton.disabled = true;
   boton.querySelector("span").textContent = "Guardando...";
   $("errorPrestamo").hidden = true;
+  const inicioGuardado = performance.now();
+  let registrado = false;
 
   try {
     const respuesta = await enviarApi({
       accion: "prestamo",
       matricula: estado.trabajador.matricula,
       instrumento: estado.instrumento.instrumento,
-      cantidad: estado.cantidad
+      cantidad: estado.cantidad,
+      duracion: duracion          // segundos, para comparar contra el vale de papel
     });
-    if (respuesta.ok) mostrarExito(respuesta);
+    registrado = respuesta.ok;
+    if (respuesta.ok) mostrarExito(respuesta, duracion, segundosDesde(inicioGuardado));
     else mostrarErrorPrestamo(respuesta.error || "La API rechazó el préstamo.");
   } catch (error) {
     marcarConexion(false);
     mostrarErrorPrestamo("No se pudo conectar con el servidor. Revise la conexión e intente de nuevo.");
   } finally {
+    if (!registrado) iniciarCronometro();   // si falló, el tiempo sigue contando hasta que se registre
     estado.guardando = false;
     boton.querySelector("span").textContent = "Registrar préstamo";
     actualizarCantidad();
@@ -366,13 +379,15 @@ function mostrarErrorPrestamo(mensaje) {
 
 // Pantalla de éxito: folio grande y regreso automático en 5 s
 let temporizadorRegreso = null;
-function mostrarExito(respuesta) {
+function mostrarExito(respuesta, duracion, guardado) {
   const t = respuesta.trabajador || estado.trabajador;
   // Se agrega al historial local para que aparezca sin recargar
   if (estado.prestamos) estado.prestamos.push(normalizarPrestamo({
     folio: respuesta.folio, fecha: respuesta.fecha, hora: respuesta.hora, matricula: t.matricula,
-    nombre: t.nombre, area: t.area, jefe: t.jefe, instrumento: estado.instrumento.instrumento, cantidad: estado.cantidad, estado: "Prestado"
+    nombre: t.nombre, area: t.area, jefe: t.jefe, instrumento: estado.instrumento.instrumento, cantidad: estado.cantidad, estado: "Prestado", duracion_seg: duracion
   }));
+  $("exitoTiempo").textContent = `Registrado en ${formatearDuracion(duracion)} · guardado en el servidor en ${guardado.toFixed(1)} s`;
+  $("exitoTiempo").hidden = false;
   $("exitoTitulo").textContent = "Préstamo registrado";
   $("exitoEtiqueta").textContent = "Folio";
   $("exitoBoton").textContent = "Nuevo préstamo";
@@ -399,6 +414,9 @@ function iniciarCuentaRegresiva() {
 // Limpia todo y vuelve al paso 1
 function reiniciarPrestamo() {
   clearInterval(temporizadorRegreso);
+  detenerCronometro();
+  estado.inicioRegistro = null;
+  $("cronometroValor").textContent = formatearDuracion(0);
   estado.trabajador = null;
   estado.instrumento = null;
   estado.cantidad = CANTIDAD_MIN;
@@ -406,6 +424,35 @@ function reiniciarPrestamo() {
   irAPaso(1);
 }
 $("btnNuevoPrestamo").addEventListener("click", reiniciarPrestamo);
+
+/* ---------------------------------------------------------
+   Cronómetro del registro (para comparar contra el vale de papel)
+   --------------------------------------------------------- */
+
+let temporizadorCronometro = null;
+
+// Segundos transcurridos desde un momento de performance.now(), con un decimal
+function segundosDesde(inicio) {
+  return inicio == null ? 0 : Math.round((performance.now() - inicio) / 100) / 10;
+}
+
+// 12.4 → "0:12.4"   ·   75.2 → "1:15.2"
+function formatearDuracion(segundos) {
+  const min = Math.floor(segundos / 60);
+  const seg = (segundos % 60).toFixed(1).padStart(4, "0");
+  return `${min}:${seg}`;
+}
+
+function iniciarCronometro() {
+  clearInterval(temporizadorCronometro);
+  temporizadorCronometro = setInterval(() => {
+    $("cronometroValor").textContent = formatearDuracion(segundosDesde(estado.inicioRegistro));
+  }, 100);
+}
+
+function detenerCronometro() {
+  clearInterval(temporizadorCronometro);
+}
 
 /* ---------------------------------------------------------
    7. Devoluciones e historial del trabajador
@@ -592,6 +639,7 @@ function mostrarExitoDevolucion(devueltos) {
   $("exitoFolio").textContent = devueltos.length === 1 ? ultimo.folio : devueltos.length;
   $("exitoResumen").textContent = `${devueltos.map((p) => `${p.cantidad} × ${p.instrumento}`).join(", ")} de ${estado.trabajador.nombre} · ${ultimo.fecha_devolucion} a las ${ultimo.hora_devolucion} h`;
   $("exitoBoton").textContent = "Nueva devolución";
+  $("exitoTiempo").hidden = true;
   irAPaso("exito");
   iniciarCuentaRegresiva();
 }
@@ -793,6 +841,7 @@ console.assert(leerCredencial('{"m":"12","n":"Ana","a":"A","j":"J"}') === null, 
 console.assert(leerCredencial("https://ejemplo.com") === null, "texto que no es JSON");
 console.assert(mismaMatricula("097815", "97815") && !mismaMatricula("104523", "104524"), "matrículas con ceros");
 console.assert(tiempoFuera({ fecha: "2000-01-01", hora: "08:00" }).vencido === true, "préstamo vencido");
+console.assert(formatearDuracion(75.2) === "1:15.2" && formatearDuracion(9.5) === "0:09.5", "formato del cronómetro");
 console.assert(leerCredencial(textoParaQR({ m: "104523", n: "Begoña Núñez", a: "Metrología", j: "Ing. Raúl" }))?.nombre === "Begoña Núñez", "acentos en el QR");
 
 /* ---------------------------------------------------------

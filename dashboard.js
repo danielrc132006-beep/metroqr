@@ -113,8 +113,12 @@ function pintarIndicadores(lista) {
   const trabajadores = new Set(lista.map((p) => p.matricula)).size;
   const porInstrumento = [...agrupar(lista, "instrumento").entries()].sort((a, b) => b[1].piezas - a[1].piezas);
 
+  // Tiempo promedio de registro en la app (solo préstamos que traen la duración)
+  const duraciones = lista.map((p) => Number(String(p.duracion_seg || "").replace(",", "."))).filter((s) => s > 0);
+  const promedio = duraciones.length ? duraciones.reduce((s, x) => s + x, 0) / duraciones.length : 0;
+
   $("kPrestamos").textContent = lista.length;
-  $("kPrestamosSub").textContent = textoPeriodo();
+  $("kPrestamosSub").textContent = textoPeriodo() + (promedio ? ` · ${promedio.toFixed(1)} s promedio por registro` : "");
   $("kPiezas").textContent = piezas;
   $("kPiezasSub").textContent = lista.length ? `${(piezas / lista.length).toFixed(1)} por préstamo` : "sin préstamos";
   $("kTrabajadores").textContent = trabajadores;
@@ -313,7 +317,7 @@ $("btnVerMas").addEventListener("click", () => { tablero.verTodos = !tablero.ver
 
 // Exporta los préstamos del periodo a CSV (Excel lo abre con acentos gracias al BOM)
 $("btnExportar").addEventListener("click", () => {
-  const columnas = ["folio", "fecha", "hora", "matricula", "nombre", "area", "jefe", "instrumento", "cantidad", "estado", "fecha_devolucion", "hora_devolucion", "recibio"];
+  const columnas = ["folio", "fecha", "hora", "matricula", "nombre", "area", "jefe", "instrumento", "cantidad", "estado", "fecha_devolucion", "hora_devolucion", "recibio", "duracion_seg"];
   const lineas = prestamosDelPeriodo().map((p) => columnas.map((c) => `"${String(p[c] ?? "").replace(/"/g, '""')}"`).join(","));
   const enlace = document.createElement("a");
   enlace.href = URL.createObjectURL(new Blob(["﻿" + [columnas.join(","), ...lineas].join("\r\n")], { type: "text/csv;charset=utf-8" }));

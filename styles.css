@@ -501,3 +501,9 @@ select.campo option { background: var(--lienzo); color: var(--texto); }
 /* En la tarjeta angosta del trabajador, el botón va debajo del texto */
 .pendiente:not(.grande) { flex-direction: column; align-items: stretch; gap: 8px; }
 .pendiente:not(.grande) .pendiente-btn { align-self: flex-start; }
+
+/* ---------- Cronómetro del registro ---------- */
+.cronometro { display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 14px; color: var(--texto-ayuda); }
+.cronometro svg.lucide { width: 18px; height: 18px; color: var(--azul-plano); }
+.cronometro strong { font-family: var(--fuente-mono); font-size: 16px; font-weight: 400; color: var(--texto); min-width: 7ch; }
+.exito-tiempo { font-family: var(--fuente-mono); font-size: 14px; color: var(--verde-texto); }

@@ -162,6 +162,8 @@
         <div class="accion" id="accionPrestamo">
           <p class="alerta-error" id="errorPrestamo" role="alert" hidden></p>
           <p class="ayuda" id="ayudaRegistrar">Elija un instrumento para continuar.</p>
+          <!-- Cronómetro: desde que se lee la credencial hasta que se toca Registrar -->
+          <p class="cronometro" id="cronometro"><i data-lucide="timer" aria-hidden="true"></i><span>Tiempo de registro</span><strong id="cronometroValor" class="num">0:00.0</strong></p>
           <button class="btn btn-principal" id="btnRegistrar" type="button" disabled>
             <i data-lucide="check" aria-hidden="true"></i><span>Registrar préstamo</span>
           </button>
@@ -175,6 +177,7 @@
         <p class="exito-etiqueta" id="exitoEtiqueta">Folio</p>
         <p class="exito-folio num" id="exitoFolio">ML-0000</p>
         <p class="exito-resumen" id="exitoResumen"></p>
+        <p class="exito-tiempo" id="exitoTiempo" hidden></p>
         <button class="btn btn-blanco" id="btnNuevoPrestamo" type="button">
           <i data-lucide="rotate-ccw" aria-hidden="true"></i><span id="exitoBoton">Nuevo préstamo</span>
         </button>
