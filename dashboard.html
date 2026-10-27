@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0095D8">
+  <title>Dashboard · ManagerLAB</title>
+  <!-- Reutiliza los colores, la barra y los botones de la app -->
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+
+  <!-- ============ BARRA SUPERIOR (igual que en la app) ============ -->
+  <header class="barra">
+    <div class="marca">
+      <img class="marca-logo" src="img/logo-thyssenkrupp.png" alt="thyssenkrupp" onerror="this.remove()">
+      <div class="marca-texto">
+        <strong>ManagerLAB</strong>
+        <span>Dashboard de préstamos</span>
+      </div>
+    </div>
+
+    <nav class="pestanas" aria-label="Secciones">
+      <a class="pestana" href="index.html"><i data-lucide="clipboard-check" aria-hidden="true"></i><span>Registrar préstamo</span></a>
+      <a class="pestana" href="dashboard.html" aria-current="page"><i data-lucide="layout-dashboard" aria-hidden="true"></i><span>Dashboard</span></a>
+    </nav>
+
+    <div class="conexion" id="conexion" role="status" aria-live="polite">
+      <span class="conexion-punto" aria-hidden="true"></span>
+      <span class="conexion-texto">Conectando…</span>
+    </div>
+  </header>
+
+  <main class="tablero">
+    <!-- Encabezado y filtros: todo en una fila arriba de las gráficas -->
+    <div class="tablero-cabeza">
+      <div>
+        <h1>Préstamos del laboratorio</h1>
+        <p class="nota" id="actualizado">Cargando datos…</p>
+      </div>
+      <div class="filtros">
+        <div class="periodo" role="radiogroup" aria-label="Periodo">
+          <button type="button" role="radio" data-dias="1">Hoy</button>
+          <button type="button" role="radio" data-dias="7" aria-checked="true">7 días</button>
+          <button type="button" role="radio" data-dias="30">30 días</button>
+          <button type="button" role="radio" data-dias="0">Todo</button>
+        </div>
+        <button class="btn btn-secundario" id="btnActualizar" type="button"><i data-lucide="refresh-cw" aria-hidden="true"></i><span>Actualizar</span></button>
+      </div>
+    </div>
+
+    <p class="alerta-error" id="errorCarga" role="alert" hidden></p>
+
+    <!-- Indicadores principales -->
+    <section class="indicadores" aria-label="Resumen del periodo">
+      <article class="tarjeta indicador">
+        <span class="indicador-icono"><i data-lucide="clipboard-list" aria-hidden="true"></i></span>
+        <p class="indicador-etiqueta">Préstamos</p>
+        <p class="indicador-valor num" id="kPrestamos">—</p>
+        <p class="indicador-sub" id="kPrestamosSub"></p>
+      </article>
+      <article class="tarjeta indicador">
+        <span class="indicador-icono"><i data-lucide="ruler" aria-hidden="true"></i></span>
+        <p class="indicador-etiqueta">Piezas prestadas</p>
+        <p class="indicador-valor num" id="kPiezas">—</p>
+        <p class="indicador-sub" id="kPiezasSub"></p>
+      </article>
+      <article class="tarjeta indicador">
+        <span class="indicador-icono"><i data-lucide="users" aria-hidden="true"></i></span>
+        <p class="indicador-etiqueta">Trabajadores atendidos</p>
+        <p class="indicador-valor num" id="kTrabajadores">—</p>
+        <p class="indicador-sub" id="kTrabajadoresSub"></p>
+      </article>
+      <article class="tarjeta indicador destacado">
+        <span class="indicador-icono"><i data-lucide="trophy" aria-hidden="true"></i></span>
+        <p class="indicador-etiqueta">Más demandado</p>
+        <p class="indicador-valor texto" id="kTop">—</p>
+        <p class="indicador-sub" id="kTopSub"></p>
+      </article>
+    </section>
+
+    <!-- Gráficas -->
+    <section class="graficas">
+      <article class="tarjeta panel panel-ancho">
+        <header class="panel-cabeza">
+          <div>
+            <h2>Instrumentos más demandados</h2>
+            <p class="nota">Piezas prestadas por instrumento en el periodo</p>
+          </div>
+        </header>
+        <div class="barras" id="graficaInstrumentos" role="list"></div>
+      </article>
+
+      <article class="tarjeta panel">
+        <header class="panel-cabeza">
+          <div>
+            <h2 id="tituloActividad">Préstamos por día</h2>
+            <p class="nota" id="notaActividad">Número de préstamos registrados</p>
+          </div>
+        </header>
+        <div class="columnas" id="graficaActividad" role="list"></div>
+      </article>
+
+      <article class="tarjeta panel">
+        <header class="panel-cabeza">
+          <div>
+            <h2>Préstamos por área</h2>
+            <p class="nota">Qué áreas piden más instrumentos</p>
+          </div>
+        </header>
+        <div class="barras" id="graficaAreas" role="list"></div>
+      </article>
+    </section>
+
+    <!-- Tabla de préstamos -->
+    <section class="tarjeta panel">
+      <header class="panel-cabeza">
+        <div>
+          <h2>Préstamos del periodo</h2>
+          <p class="nota" id="notaTabla"></p>
+        </div>
+        <div class="tabla-acciones">
+          <label class="buscador">
+            <i data-lucide="search" aria-hidden="true"></i>
+            <span class="solo-lector">Buscar</span>
+            <input id="buscar" class="campo" type="search" placeholder="Nombre, matrícula o folio" autocomplete="off">
+          </label>
+          <button class="btn btn-secundario" id="btnExportar" type="button"><i data-lucide="download" aria-hidden="true"></i>CSV</button>
+        </div>
+      </header>
+      <div class="tabla-marco">
+        <table class="tabla">
+          <thead>
+            <tr><th>Folio</th><th>Fecha</th><th>Hora</th><th>Trabajador</th><th>Área</th><th>Instrumento</th><th class="num-col">Cant.</th></tr>
+          </thead>
+          <tbody id="filas"></tbody>
+        </table>
+      </div>
+      <button class="btn btn-fantasma ver-mas" id="btnVerMas" type="button" hidden>Ver todos</button>
+    </section>
+  </main>
+
+  <!-- Globo de información al pasar el dedo o el mouse por una barra -->
+  <div class="globo" id="globo" role="tooltip" hidden></div>
+
+  <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+  <script src="config.js"></script>
+  <script src="dashboard.js"></script>
+</body>
+</html>
