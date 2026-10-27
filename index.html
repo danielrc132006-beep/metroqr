@@ -13,20 +13,26 @@
   <header class="barra">
     <div class="marca">
       <!-- Si la imagen no existe, se elimina y no se muestra nada en su lugar -->
-      <img class="marca-logo" src="img/imglogo.jfif" alt="Logotipo de thyssenkrupp" onerror="this.remove()">
+      <img class="marca-logo" src="img/logo-thyssenkrupp.png" alt="thyssenkrupp" onerror="this.remove()">
       <div class="marca-texto">
         <strong>ManagerLAB</strong>
         <span>Laboratorio de Metrología</span>
       </div>
     </div>
 
-    <nav class="pestanas" role="tablist" aria-label="Secciones">
+    <nav class="pestanas" aria-label="Secciones">
+      <div class="pestanas-grupo" role="tablist" aria-label="Pantallas de la app">
       <button class="pestana" role="tab" aria-selected="true" aria-controls="pantallaPrestamo" data-pantalla="pantallaPrestamo">
         <i data-lucide="clipboard-check" aria-hidden="true"></i><span>Registrar préstamo</span>
       </button>
       <button class="pestana" role="tab" aria-selected="false" aria-controls="pantallaCredencial" data-pantalla="pantallaCredencial">
         <i data-lucide="id-card" aria-hidden="true"></i><span>Generar credencial</span>
       </button>
+      </div>
+      <!-- Enlace a la otra página (no es una pestaña de esta pantalla) -->
+      <a class="pestana" href="dashboard.html">
+        <i data-lucide="layout-dashboard" aria-hidden="true"></i><span>Dashboard</span>
+      </a>
     </nav>
 
     <div class="conexion" id="conexion" role="status" aria-live="polite">
@@ -49,7 +55,7 @@
       <!-- Paso 1: escanear credencial -->
       <div id="paso1" class="paso">
         <div class="bienvenida">
-          <img class="bienvenida-foto" src="img/imglaboratorio.jpg" alt="Laboratorio de metrología de la planta" onerror="this.remove()">
+          <img class="bienvenida-foto" src="img/laboratorio.jpg" alt="Técnica midiendo una pieza con un calibrador digital" onerror="this.remove()">
           <div class="bienvenida-capa" aria-hidden="true"></div>
 
           <div class="bienvenida-texto">

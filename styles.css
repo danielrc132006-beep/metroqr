@@ -75,11 +75,14 @@ svg.lucide { width: 22px; height: 22px; stroke-width: 2; flex: none; }
   box-shadow: var(--sombra-2);
 }
 .marca { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.marca-logo { width: 48px; height: 48px; padding: 3px; border-radius: 10px; object-fit: contain; background: #000; }
+/* El logo es azul: va sobre una placa blanca para que se vea en la barra azul */
+.marca-logo { height: 44px; width: auto; padding: 12px 14px; border-radius: 10px; background: var(--blanco); box-shadow: var(--sombra-1); }
 .marca-texto strong { display: block; font-size: 22px; font-weight: 700; letter-spacing: -.01em; line-height: 1.1; }
 .marca-texto span { font-size: 14px; font-weight: 500; }
 
 .pestanas { display: flex; gap: 4px; margin: 0 auto; padding: 4px; background: rgba(255, 255, 255, .16); border-radius: 999px; }
+.pestanas-grupo { display: contents; }   /* agrupa las pestañas para lectores de pantalla sin cambiar el diseño */
+a.pestana { text-decoration: none; }
 .pestana {
   display: inline-flex; align-items: center; gap: 8px;
   min-height: 52px; padding: 0 22px; border: 0; border-radius: 999px;
@@ -171,7 +174,7 @@ select.campo { padding-right: 44px; background: var(--blanco) url("data:image/sv
   background: var(--azul);   /* si la foto no existe queda un fondo liso azul */
   color: var(--blanco); box-shadow: var(--sombra-2);
 }
-.bienvenida-foto { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: -2; }
+.bienvenida-foto { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 60% 50%; z-index: -2; }   /* centra las manos con el calibrador */
 .bienvenida-capa { position: absolute; inset: 0; z-index: -1; background: linear-gradient(100deg, rgba(26, 35, 48, .88) 0%, rgba(26, 35, 48, .62) 55%, rgba(26, 35, 48, .45) 100%); }
 .bienvenida-texto { display: grid; gap: 18px; justify-items: start; }
 .bienvenida-texto h1 { font-size: 34px; }
