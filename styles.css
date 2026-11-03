@@ -507,3 +507,90 @@ select.campo option { background: var(--lienzo); color: var(--texto); }
 .cronometro svg.lucide { width: 18px; height: 18px; color: var(--azul-plano); }
 .cronometro strong { font-family: var(--fuente-mono); font-size: 16px; font-weight: 400; color: var(--texto); min-width: 7ch; }
 .exito-tiempo { font-family: var(--fuente-mono); font-size: 14px; color: var(--verde-texto); }
+
+/* ---------- Catálogo de instrumentos ---------- */
+.solo-lector { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.cat-cabeza { display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 16px; margin-bottom: 20px; }
+.cat-cabeza h1 { font-size: 40px; background: var(--degradado-cielo); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.cat-cabeza .subtitulo { margin: 8px 0 0; }
+.cat-buscador { position: relative; display: block; width: 340px; max-width: 100%; }
+.cat-buscador svg.lucide { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); width: 20px; height: 20px; color: var(--texto-ayuda); }
+.cat-buscador .campo { padding-left: 44px; }
+
+.cat-filtros { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+.cat-filtros button {
+  min-height: 44px; padding: 0 18px; border: 0; border-radius: 999px;
+  background: var(--vidrio); color: var(--texto-suave); font-weight: 500; box-shadow: var(--linea);
+  transition: background-color var(--dur) var(--curva), color var(--dur) var(--curva);
+}
+.cat-filtros button:hover { background: var(--vidrio-claro); color: var(--blanco); }
+.cat-filtros button[aria-checked="true"] { background: var(--vidrio-activo); color: var(--blanco); box-shadow: inset 0 1px 1px rgba(216, 236, 248, .2), inset 0 0 0 1px var(--borde-fuerte); }
+
+.cat-rejilla { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.cat-tarjeta {
+  display: grid; grid-template-rows: auto auto 1fr auto; gap: 8px; min-height: 190px; padding: 20px;
+  border: 0; border-radius: var(--radio); text-align: left; color: var(--texto);
+  background: var(--vidrio); box-shadow: var(--sombra-vidrio);
+  transition: background-color var(--dur) var(--curva), transform 150ms var(--curva);
+}
+.cat-tarjeta:hover { background: var(--vidrio-claro); }
+.cat-tarjeta:active { transform: scale(.99); }
+.cat-tarjeta-cabeza { display: flex; justify-content: space-between; gap: 8px; }
+.cat-categoria { font-family: var(--fuente-mono); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--azul-plano); }
+.cat-clave { font-family: var(--fuente-mono); font-size: 12px; color: var(--texto-ayuda); }
+.cat-nombre { font-family: var(--fuente-titulo); font-size: 21px; font-weight: 500; line-height: 1.2; color: var(--texto-titulo); }
+.cat-desc { font-size: 15px; line-height: 1.4; color: var(--texto-ayuda); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.cat-tarjeta-pie { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.cat-rango { font-family: var(--fuente-mono); font-size: 12px; color: var(--texto-suave); }
+.cat-disponible { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: var(--radio-chico); font-size: 14px; font-weight: 500; }
+.cat-disponible::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.cat-disponible.libre { background: rgba(46, 125, 50, .18); color: var(--verde-texto); }
+.cat-disponible.parcial { background: rgba(230, 155, 0, .14); color: var(--ambar-texto); }
+.cat-disponible.agotado { background: rgba(198, 40, 40, .18); color: var(--rojo-texto); }
+
+/* Panel de detalle */
+.cat-detalle {
+  width: min(560px, calc(100vw - 32px)); max-height: calc(100dvh - 48px); padding: 28px; border: 0; border-radius: var(--radio);
+  background: var(--vidrio-profundo); color: var(--texto); box-shadow: var(--sombra-modal), var(--linea);
+  -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
+}
+.cat-detalle[open] { display: grid; gap: 16px; animation: entrar var(--dur) var(--curva); }
+.cat-detalle::backdrop { background: rgba(5, 6, 15, .7); }
+.cat-detalle-cabeza { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.cat-detalle-cabeza h2 { font-size: 28px; line-height: 1.15; }
+.cat-detalle-meta { font-family: var(--fuente-mono); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--azul-plano); margin-bottom: 6px; }
+.cat-cerrar { padding: 0; width: 48px; flex: none; }
+.cat-detalle .cat-disponible { justify-self: start; }
+.cat-detalle-desc { color: var(--texto-suave); }
+.cat-ficha { margin: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 14px 20px; padding-top: 14px; box-shadow: inset 0 1px 0 var(--borde); }
+.cat-ficha dt { font-family: var(--fuente-mono); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--texto-ayuda); }
+.cat-ficha dd { margin: 2px 0 0; font-weight: 500; color: var(--texto-titulo); }
+.cat-quien { display: grid; gap: 6px; }
+.cat-quien:empty { display: none; }
+.cat-quien-titulo { font-size: 14px; color: var(--ambar-texto); font-weight: 600; }
+.cat-quien-fila { font-size: 14px; color: var(--texto-suave); }
+
+/* Aviso en el inicio: instrumento elegido desde el catálogo */
+.preseleccion { display: inline-flex; align-items: center; gap: 8px; padding: 4px 4px 4px 14px; border-radius: 999px; background: rgba(102, 58, 243, .2); box-shadow: inset 0 0 0 1px rgba(102, 58, 243, .5); color: var(--blanco); font-weight: 500; }
+.preseleccion svg.lucide { width: 18px; height: 18px; }
+.preseleccion .btn { min-height: 40px; width: 40px; padding: 0; }
+
+@media (max-width: 1000px) {
+  .cat-rejilla { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cat-cabeza h1 { font-size: 34px; }
+  .cat-buscador { width: 100%; }
+}
+@media (max-width: 640px) {
+  .cat-rejilla { grid-template-columns: 1fr; }
+  .cat-ficha { grid-template-columns: 1fr; }
+}
+
+/* Con 4 pestañas, en iPad horizontal la barra se compacta para que todo quepa en una fila */
+@media (max-width: 1240px) and (min-width: 1001px) {
+  .barra { gap: 12px; }
+  .marca { gap: 12px; }
+  .marca-texto { padding-left: 12px; }
+  .marca-texto span { display: none; }
+  .pestana { padding: 0 14px; font-size: 15px; gap: 6px; }
+  .pestana svg.lucide { width: 20px; height: 20px; }
+}

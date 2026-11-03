@@ -20,7 +20,10 @@ const estado = {
   modo: "prestar",     // "prestar" o "devolver"
   prestamos: null,     // historial de la hoja Prestamos (null mientras carga)
   devolviendo: false,  // evita devoluciones dobles
-  inicioRegistro: null // momento en que se leyó la credencial (para el cronómetro)
+  inicioRegistro: null, // momento en que se leyó la credencial (para el cronómetro)
+  catFiltro: "Todas",   // categoría elegida en el catálogo
+  catActual: null,      // instrumento abierto en el detalle del catálogo
+  instrumentoPreferido: null // elegido desde el catálogo para el siguiente préstamo
 };
 
 const HORAS_TURNO = 8;   // un préstamo con más horas fuera se marca en ámbar
@@ -71,7 +74,7 @@ async function cargarDatosIniciales() {
   ]);
   if ([catalogo, areas, personal].some((r) => r.status === "rejected")) marcarConexion(false);
 
-  if (catalogo.status === "fulfilled") { estado.catalogo = catalogo.value; pintarCatalogo(); }
+  if (catalogo.status === "fulfilled") { estado.catalogo = catalogo.value; pintarCatalogo(); pintarVistaCatalogo(); }
   else $("catalogo").innerHTML = '<p class="cargando">No se pudo cargar el catálogo. Revise la conexión y recargue la página.</p>';
 
   if (areas.status === "fulfilled") { estado.areas = areas.value; pintarListasAreas(); }
@@ -97,6 +100,11 @@ function mostrarPantalla(idPantalla) {
   // La cámara solo se usa en el paso 1 del préstamo
   if (idPantalla === "pantallaPrestamo" && !$("paso1").hidden) iniciarCamara();
   else detenerCamara();
+  // El catálogo se pinta con lo que ya hay y se actualiza la disponibilidad con la hoja
+  if (idPantalla === "pantallaCatalogo") {
+    pintarVistaCatalogo();
+    cargarPrestamos().then(pintarVistaCatalogo).catch(() => {});
+  }
 }
 
 // Muestra el paso indicado: 1 (escanear), 2 (elegir y confirmar) o "exito"
@@ -206,6 +214,12 @@ function identificarTrabajador(trabajador, inicio) {
   pintarTrabajador(trabajador);
   pintarCatalogo();
   actualizarCantidad();
+  // Si se eligió un instrumento desde el catálogo, ya queda seleccionado
+  if (estado.instrumentoPreferido && estado.modo === "prestar") {
+    const item = estado.catalogo.find((c) => c.clave === estado.instrumentoPreferido.clave);
+    if (item) seleccionarInstrumento(item);
+    quitarPreseleccion();
+  }
   $("errorPrestamo").hidden = true;
   $("errorDevolucion").hidden = true;
   aplicarModo();
@@ -645,7 +659,131 @@ function mostrarExitoDevolucion(devueltos) {
 }
 
 /* ---------------------------------------------------------
-   8. Generar credencial
+   8. Catálogo de instrumentos (consulta y disponibilidad)
+   --------------------------------------------------------- */
+
+const mismoNombre = (a, b) => String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
+
+// Piezas prestadas ahora, existencias y disponibles de un instrumento.
+// Sin la columna "existencias" no se inventa el total: solo se sabe si hay piezas fuera.
+function disponibilidad(item) {
+  const abiertos = (estado.prestamos || []).filter((p) => p.estado !== "Devuelto" && mismoNombre(p.instrumento, item.instrumento));
+  const fuera = abiertos.reduce((s, p) => s + p.cantidad, 0);
+  const total = parseInt(item.existencias, 10);
+  if (!(total > 0)) {
+    return fuera ? { nivel: "parcial", texto: `${plural(fuera, "pieza prestada", "piezas prestadas")}`, abiertos }
+                 : { nivel: "libre", texto: "Disponible", abiertos };
+  }
+  const libres = Math.max(0, total - fuera);
+  if (!fuera) return { nivel: "libre", texto: `Disponible · ${plural(total, "pieza", "piezas")}`, abiertos };
+  if (!libres) return { nivel: "agotado", texto: `Agotado · ${total} de ${total} fuera`, abiertos };
+  return { nivel: "parcial", texto: `${libres} de ${total} disponibles`, abiertos };
+}
+
+const plural = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`;
+
+function pintarVistaCatalogo() {
+  const rejilla = $("catRejilla");
+  if (!estado.catalogo.length) { rejilla.innerHTML = '<p class="cargando">Cargando catálogo…</p>'; return; }
+
+  // Filtros: "Todas" más las categorías en el orden en que aparecen en la hoja
+  const categorias = ["Todas", ...new Set(estado.catalogo.map((c) => c.categoria).filter(Boolean))];
+  if (!categorias.includes(estado.catFiltro)) estado.catFiltro = "Todas";
+  const filtros = $("catFiltros");
+  filtros.innerHTML = "";
+  categorias.forEach((cat) => {
+    const b = crear("button", "", cat);
+    b.type = "button";
+    b.setAttribute("role", "radio");
+    b.setAttribute("aria-checked", String(cat === estado.catFiltro));
+    b.addEventListener("click", () => { estado.catFiltro = cat; pintarVistaCatalogo(); });
+    filtros.append(b);
+  });
+
+  const texto = $("catBuscar").value.trim().toLowerCase();
+  const visibles = estado.catalogo.filter((c) =>
+    (estado.catFiltro === "Todas" || c.categoria === estado.catFiltro) &&
+    (!texto || [c.instrumento, c.clave, c.descripcion, c.categoria].some((v) => String(v || "").toLowerCase().includes(texto))));
+
+  const prestadosAhora = estado.catalogo.filter((c) => disponibilidad(c).nivel !== "libre").length;
+  $("catResumen").textContent = `${plural(estado.catalogo.length, "instrumento", "instrumentos")} · ${plural(categorias.length - 1, "categoría", "categorías")}`
+    + (estado.prestamos ? ` · ${plural(prestadosAhora, "con piezas prestadas ahora", "con piezas prestadas ahora")}` : "");
+
+  rejilla.innerHTML = "";
+  if (!visibles.length) { rejilla.append(crear("p", "cargando", "Ningún instrumento coincide con la búsqueda.")); return; }
+  visibles.forEach((item) => {
+    const d = disponibilidad(item);
+    const tarjeta = crear("button", "cat-tarjeta");
+    tarjeta.type = "button";
+    tarjeta.setAttribute("aria-label", `${item.instrumento}, ${d.texto}. Ver detalle`);
+    const cabeza = crear("span", "cat-tarjeta-cabeza");
+    cabeza.append(crear("span", "cat-categoria", item.categoria || "Sin categoría"), crear("span", "cat-clave", item.clave));
+    tarjeta.append(cabeza, crear("span", "cat-nombre", item.instrumento));
+    if (item.descripcion) tarjeta.append(crear("span", "cat-desc", item.descripcion));
+    const pie = crear("span", "cat-tarjeta-pie");
+    pie.append(crear("span", "cat-disponible " + d.nivel, d.texto));
+    if (item.rango) pie.append(crear("span", "cat-rango", item.rango));
+    tarjeta.append(pie);
+    tarjeta.addEventListener("click", () => abrirDetalle(item));
+    rejilla.append(tarjeta);
+  });
+}
+
+$("catBuscar").addEventListener("input", pintarVistaCatalogo);
+
+// Panel de detalle de un instrumento
+function abrirDetalle(item) {
+  estado.catActual = item;
+  const d = disponibilidad(item);
+  $("detMeta").textContent = [item.clave, item.categoria].filter(Boolean).join(" · ");
+  $("detNombre").textContent = item.instrumento;
+  $("detDisponible").textContent = d.texto;
+  $("detDisponible").className = "cat-disponible " + d.nivel;
+  $("detDescripcion").textContent = item.descripcion || "";
+  $("detDescripcion").hidden = !item.descripcion;
+
+  const ficha = $("detFicha");
+  ficha.innerHTML = "";
+  [["Rango", item.rango], ["Resolución", item.resolucion], ["Existencias", item.existencias], ["Ubicación", item.ubicacion], ["Notas", item.notas]]
+    .filter(([, valor]) => valor)
+    .forEach(([nombre, valor]) => { const fila = crear("div"); fila.append(crear("dt", "", nombre), crear("dd", "", valor)); ficha.append(fila); });
+
+  // Quién lo tiene ahora
+  const quien = $("detQuien");
+  quien.innerHTML = "";
+  if (d.abiertos.length) {
+    quien.append(crear("p", "cat-quien-titulo", "Lo tienen ahora"));
+    d.abiertos.forEach((p) => quien.append(crear("p", "cat-quien-fila", `${p.cantidad} × · ${p.nombre} (${p.area}) · ${p.folio} · hace ${tiempoFuera(p).texto}`)));
+  }
+  $("btnPrestarDesdeCatalogo").disabled = d.nivel === "agotado";
+  $("btnPrestarDesdeCatalogo").querySelector("span").textContent = d.nivel === "agotado" ? "Sin piezas disponibles" : "Prestar este instrumento";
+  $("catDetalle").showModal();
+}
+
+$("btnCerrarDetalle").addEventListener("click", () => $("catDetalle").close());
+// Tocar fuera del panel también lo cierra
+$("catDetalle").addEventListener("click", (e) => { if (e.target === $("catDetalle")) $("catDetalle").close(); });
+
+// "Prestar este instrumento": va al escáner con el instrumento ya elegido
+$("btnPrestarDesdeCatalogo").addEventListener("click", () => {
+  estado.instrumentoPreferido = estado.catActual;
+  $("catDetalle").close();
+  estado.modo = "prestar";
+  aplicarModo();
+  reiniciarPrestamo();
+  $("preseleccionTexto").textContent = `Instrumento elegido: ${estado.catActual.instrumento}`;
+  $("preseleccion").hidden = false;
+  mostrarPantalla("pantallaPrestamo");
+});
+
+function quitarPreseleccion() {
+  estado.instrumentoPreferido = null;
+  $("preseleccion").hidden = true;
+}
+$("btnQuitarPreseleccion").addEventListener("click", quitarPreseleccion);
+
+/* ---------------------------------------------------------
+   9. Generar credencial
    --------------------------------------------------------- */
 
 // Llena las listas de área y jefe con los datos de la API
@@ -818,7 +956,7 @@ function descargarCredencial() {
 }
 
 /* ---------------------------------------------------------
-   9. Utilidades
+   10. Utilidades
    --------------------------------------------------------- */
 
 // Convierte los <i data-lucide> en íconos SVG
@@ -842,6 +980,7 @@ console.assert(leerCredencial("https://ejemplo.com") === null, "texto que no es 
 console.assert(mismaMatricula("097815", "97815") && !mismaMatricula("104523", "104524"), "matrículas con ceros");
 console.assert(tiempoFuera({ fecha: "2000-01-01", hora: "08:00" }).vencido === true, "préstamo vencido");
 console.assert(formatearDuracion(75.2) === "1:15.2" && formatearDuracion(9.5) === "0:09.5", "formato del cronómetro");
+console.assert(disponibilidad({ instrumento: "Prueba", existencias: "2" }).nivel === "libre" && disponibilidad({ instrumento: "Prueba" }).texto === "Disponible", "disponibilidad sin préstamos");
 console.assert(leerCredencial(textoParaQR({ m: "104523", n: "Begoña Núñez", a: "Metrología", j: "Ing. Raúl" }))?.nombre === "Begoña Núñez", "acentos en el QR");
 
 /* ---------------------------------------------------------
