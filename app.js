@@ -23,10 +23,17 @@ const estado = {
   inicioRegistro: null, // momento en que se leyó la credencial (para el cronómetro)
   catFiltro: "Todas",   // categoría elegida en el catálogo
   catActual: null,      // instrumento abierto en el detalle del catálogo
-  instrumentoPreferido: null // elegido desde el catálogo para el siguiente préstamo
+  instrumentoPreferido: null, // elegido desde el catálogo para el siguiente préstamo
+  calibraciones: [],    // historial de la hoja Calibraciones
+  incidencias: [],      // instrumentos que regresaron dañados o incompletos
+  condiciones: {},      // cómo regresa cada préstamo en la devolución: {folio: {condicion, observacion, piezas}}
+  pin: null,            // PIN del encargado (pestaña Mantenimiento)
+  mantActual: null,     // incidencia o instrumento abierto en el diálogo de mantenimiento
+  calibrarDespues: null // instrumento elegido desde el catálogo antes de escribir el PIN
 };
 
 const HORAS_TURNO = 8;   // un préstamo con más horas fuera se marca en ámbar
+const DIAS_AVISO = 30;   // una calibración que vence en 30 días o menos se marca "por vencer"
 
 const CANTIDAD_MIN = 1;
 const CANTIDAD_MAX = 10;
@@ -80,6 +87,22 @@ async function cargarDatosIniciales() {
   if (areas.status === "fulfilled") { estado.areas = areas.value; pintarListasAreas(); }
   if (personal.status === "fulfilled") estado.personal = personal.value;
   cargarPrestamos().catch(() => {});   // el historial se pide aparte para no retrasar el arranque
+  cargarMantenimiento().then(pintarTodo).catch(() => {});
+}
+
+// Calibraciones e incidencias (bloquean o restan piezas en el catálogo)
+async function cargarMantenimiento() {
+  const [calibraciones, incidencias] = await Promise.all([consultarApi("calibraciones"), consultarApi("incidencias")]);
+  estado.calibraciones = calibraciones;
+  estado.incidencias = incidencias;
+}
+
+// Vuelve a pintar todo lo que depende de la disponibilidad de los instrumentos
+function pintarTodo() {
+  pintarCatalogo();
+  pintarVistaCatalogo();
+  pintarContadorMant();
+  if (!$("mantContenido").hidden) pintarMantenimiento();
 }
 
 // Revisa la conexión cada minuto
@@ -104,6 +127,10 @@ function mostrarPantalla(idPantalla) {
   if (idPantalla === "pantallaCatalogo") {
     pintarVistaCatalogo();
     cargarPrestamos().then(pintarVistaCatalogo).catch(() => {});
+  }
+  if (idPantalla === "pantallaMantenimiento") {
+    aplicarAccesoMant();
+    Promise.all([cargarMantenimiento(), cargarPrestamos()]).then(pintarTodo).catch(() => {});
   }
 }
 
@@ -217,7 +244,7 @@ function identificarTrabajador(trabajador, inicio) {
   // Si se eligió un instrumento desde el catálogo, ya queda seleccionado
   if (estado.instrumentoPreferido && estado.modo === "prestar") {
     const item = estado.catalogo.find((c) => c.clave === estado.instrumentoPreferido.clave);
-    if (item) seleccionarInstrumento(item);
+    if (item && sePuedePrestar(item)) seleccionarInstrumento(item);
     quitarPreseleccion();
   }
   $("errorPrestamo").hidden = true;
@@ -229,7 +256,7 @@ function identificarTrabajador(trabajador, inicio) {
   if (estado.modo === "prestar") iniciarCronometro(); else detenerCronometro();
   // Historial: se muestra lo que ya hay y se actualiza con la hoja
   pintarHistorial();
-  cargarPrestamos().then(pintarHistorial).catch(() => {
+  cargarPrestamos().then(() => { pintarHistorial(); pintarCatalogo(); }).catch(() => {
     if (!estado.prestamos) $("historial").innerHTML = '<p class="nota">No se pudo cargar el historial.</p>';
   });
   // Se mide cuando el navegador ya dibujó los datos en pantalla
@@ -310,6 +337,13 @@ function pintarCatalogo() {
     tarjeta.querySelector(".instrumento-nombre").textContent = item.instrumento;
     tarjeta.querySelector(".instrumento-clave").textContent = item.clave;
     tarjeta.querySelector(".instrumento-nota").textContent = item.notas || "";
+    // Sin piezas o con la calibración vencida no se puede elegir; se explica por qué
+    const d = disponibilidad(item), cal = calibracion(item);
+    if (d.nivel === "agotado") {
+      tarjeta.disabled = true;
+      tarjeta.classList.add("bloqueado");
+      tarjeta.append(crear("span", "instrumento-estado agotado", d.texto));
+    } else if (cal.nivel === "porVencer") tarjeta.append(crear("span", "instrumento-estado parcial", cal.texto));
     tarjeta.addEventListener("click", () => seleccionarInstrumento(item));
     contenedor.appendChild(tarjeta);
   });
@@ -327,8 +361,12 @@ function seleccionarInstrumento(item) {
 }
 
 // Algunos instrumentos se prestan solo como juego (la nota dice "cantidad 1")
+// Tampoco se prestan más piezas de las que hay libres
 function cantidadMaxima() {
-  return /cantidad 1\b/i.test(estado.instrumento?.notas || "") ? 1 : CANTIDAD_MAX;
+  if (!estado.instrumento) return CANTIDAD_MAX;
+  const tope = /cantidad 1\b/i.test(estado.instrumento.notas || "") ? 1 : CANTIDAD_MAX;
+  const libres = disponibilidad(estado.instrumento).libres;
+  return Math.max(CANTIDAD_MIN, libres == null ? tope : Math.min(tope, libres));
 }
 
 function actualizarCantidad() {
@@ -434,6 +472,7 @@ function reiniciarPrestamo() {
   estado.trabajador = null;
   estado.instrumento = null;
   estado.cantidad = CANTIDAD_MIN;
+  estado.condiciones = {};
   $("tiempoLectura").textContent = "";
   irAPaso(1);
 }
@@ -550,7 +589,63 @@ function crearFilaPendiente(p, grande) {
   boton.setAttribute("aria-label", `Devolver ${p.instrumento}, folio ${p.folio}`);
   boton.addEventListener("click", () => devolverPrestamos([p], boton));
   fila.append(info, boton);
+  if (grande) fila.append(crearCondicion(p));
   return fila;
+}
+
+// Bien / Dañado / Incompleto de un préstamo que se devuelve. Si no es "Bien" pide qué pasó.
+function crearCondicion(p) {
+  const c = estado.condiciones[p.folio] || (estado.condiciones[p.folio] = { condicion: "Bien", observacion: "", piezas: 1 });
+  const caja = crear("div", "condicion");
+  const grupo = crear("div", "condicion-opciones");
+  grupo.setAttribute("role", "radiogroup");
+  grupo.setAttribute("aria-label", `Cómo regresó ${p.instrumento}`);
+  const detalle = crear("div", "condicion-detalle");
+
+  const pintar = () => {
+    grupo.querySelectorAll("button").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.valor === c.condicion)));
+    detalle.hidden = c.condicion === "Bien";
+  };
+  [["Bien", "circle-check"], ["Dañado", "triangle-alert"], ["Incompleto", "puzzle"]].forEach(([valor, icono]) => {
+    const b = crear("button", "condicion-" + (valor === "Bien" ? "bien" : "mal"));
+    b.type = "button";
+    b.setAttribute("role", "radio");
+    b.dataset.valor = valor;
+    b.innerHTML = `<i data-lucide="${icono}" aria-hidden="true"></i>`;
+    b.append(valor);
+    b.addEventListener("click", () => {
+      c.condicion = valor;
+      pintar();
+      if (valor !== "Bien") detalle.querySelector("input").focus();
+    });
+    grupo.append(b);
+  });
+
+  // Qué pasó (obligatorio) y cuántas piezas, si el préstamo fue de varias
+  const id = "obs-" + p.folio;
+  const campo = crear("div", "grupo");
+  const etiqueta = crear("label", "", "¿Qué le pasó? (obligatorio)");
+  etiqueta.htmlFor = id;
+  const input = crear("input", "campo");
+  Object.assign(input, { id, maxLength: 200, autocomplete: "off", placeholder: "Ej. punta doblada, falta el estuche", value: c.observacion });
+  input.addEventListener("input", () => { c.observacion = input.value; input.classList.remove("invalido"); });
+  campo.append(etiqueta, input);
+  detalle.append(campo);
+  if (p.cantidad > 1) {
+    const grupoPiezas = crear("div", "grupo condicion-piezas");
+    const etiquetaPiezas = crear("label", "", "Piezas afectadas");
+    etiquetaPiezas.htmlFor = "piezas-" + p.folio;
+    const lista = crear("select", "campo");
+    lista.id = "piezas-" + p.folio;
+    for (let n = 1; n <= p.cantidad; n++) lista.add(new Option(`${n} de ${p.cantidad}`, n));
+    lista.value = c.piezas;
+    lista.addEventListener("change", () => (c.piezas = Number(lista.value)));
+    grupoPiezas.append(etiquetaPiezas, lista);
+    detalle.append(grupoPiezas);
+  }
+  caja.append(grupo, detalle);
+  pintar();
+  return caja;
 }
 
 // Pinta el historial en la tarjeta del trabajador y, en modo devolución, la lista de pendientes
@@ -613,6 +708,15 @@ $("campoRecibio").addEventListener("input", () => {
 // Envía una devolución por cada préstamo (uno tras otro) y actualiza la pantalla
 async function devolverPrestamos(lista, boton) {
   if (estado.devolviendo || !lista.length) return;
+  // Si alguno regresó mal y no dice qué pasó, no se envía nada
+  const sinObservacion = lista.find((p) => { const c = estado.condiciones[p.folio]; return c && c.condicion !== "Bien" && !c.observacion.trim(); });
+  if (sinObservacion) {
+    const input = $("obs-" + sinObservacion.folio);
+    $("errorDevolucion").textContent = `Describa qué le pasó a ${sinObservacion.instrumento} (${sinObservacion.folio}).`;
+    $("errorDevolucion").hidden = false;
+    if (input) { input.classList.add("invalido"); input.focus(); }
+    return;
+  }
   estado.devolviendo = true;
   const textoOriginal = boton.querySelector("span").textContent;
   boton.disabled = true;
@@ -623,9 +727,20 @@ async function devolverPrestamos(lista, boton) {
   try {
     for (const [i, p] of lista.entries()) {
       boton.querySelector("span").textContent = lista.length > 1 ? `Guardando ${i + 1} de ${lista.length}...` : "Guardando...";
-      const respuesta = await enviarApi({ accion: "devolucion", folio: p.folio, recibio });
+      const c = estado.condiciones[p.folio] || { condicion: "Bien", observacion: "", piezas: 1 };
+      const respuesta = await enviarApi({ accion: "devolucion", folio: p.folio, recibio,
+        condicion: c.condicion, observacion: c.observacion.trim(), piezas: c.piezas });
       if (!respuesta.ok) throw new Error(respuesta.error || "La API rechazó la devolución.");
-      Object.assign(p, { estado: "Devuelto", fecha_devolucion: respuesta.fecha_devolucion, hora_devolucion: respuesta.hora_devolucion, recibio });
+      Object.assign(p, { estado: "Devuelto", fecha_devolucion: respuesta.fecha_devolucion, hora_devolucion: respuesta.hora_devolucion, recibio, condicion: c.condicion });
+      // La incidencia aparece de inmediato en el catálogo y en Mantenimiento
+      if (respuesta.incidencia) estado.incidencias.push({
+        id: respuesta.incidencia, fecha: respuesta.fecha_devolucion, hora: respuesta.hora_devolucion, folio: p.folio,
+        clave: estado.catalogo.find((i) => mismoNombre(i.instrumento, p.instrumento))?.clave || "", instrumento: p.instrumento,
+        piezas: String(c.piezas), matricula: p.matricula, nombre: p.nombre, area: p.area,
+        condicion: c.condicion, observacion: c.observacion.trim(), estado: "Abierta"
+      });
+      p.incidencia = respuesta.incidencia || "";
+      delete estado.condiciones[p.folio];
       devueltos.push(p);
     }
   } catch (error) {
@@ -640,9 +755,12 @@ async function devolverPrestamos(lista, boton) {
   }
 
   if (!devueltos.length) return pintarHistorial();
+  pintarTodo();
   // En modo devolución, si ya no queda nada pendiente se muestra la pantalla de éxito
   if (estado.modo === "devolver" && !pendientesDelTrabajador().length) return mostrarExitoDevolucion(devueltos);
-  mostrarAviso(devueltos.length === 1 ? `${devueltos[0].folio} devuelto` : `${devueltos.length} instrumentos devueltos`);
+  const incidencias = devueltos.filter((p) => p.incidencia).length;
+  mostrarAviso((devueltos.length === 1 ? `${devueltos[0].folio} devuelto` : `${devueltos.length} instrumentos devueltos`)
+    + (incidencias ? ` · ${plural(incidencias, "incidencia reportada", "incidencias reportadas")}` : ""));
   pintarHistorial();
 }
 
@@ -651,7 +769,9 @@ function mostrarExitoDevolucion(devueltos) {
   $("exitoTitulo").textContent = "Devolución registrada";
   $("exitoEtiqueta").textContent = devueltos.length === 1 ? "Folio" : "Instrumentos devueltos";
   $("exitoFolio").textContent = devueltos.length === 1 ? ultimo.folio : devueltos.length;
-  $("exitoResumen").textContent = `${devueltos.map((p) => `${p.cantidad} × ${p.instrumento}`).join(", ")} de ${estado.trabajador.nombre} · ${ultimo.fecha_devolucion} a las ${ultimo.hora_devolucion} h`;
+  const incidencias = devueltos.filter((p) => p.incidencia);
+  $("exitoResumen").textContent = `${devueltos.map((p) => `${p.cantidad} × ${p.instrumento}`).join(", ")} de ${estado.trabajador.nombre} · ${ultimo.fecha_devolucion} a las ${ultimo.hora_devolucion} h`
+    + (incidencias.length ? ` · ${plural(incidencias.length, "incidencia reportada", "incidencias reportadas")} (${incidencias.map((p) => p.incidencia).join(", ")})` : "");
   $("exitoBoton").textContent = "Nueva devolución";
   $("exitoTiempo").hidden = true;
   irAPaso("exito");
@@ -665,20 +785,29 @@ function mostrarExitoDevolucion(devueltos) {
 const mismoNombre = (a, b) => String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
 
 // Piezas prestadas ahora, existencias y disponibles de un instrumento.
+// Las piezas con una incidencia abierta (dañadas o esperando calibración) tampoco están disponibles.
 // Sin la columna "existencias" no se inventa el total: solo se sabe si hay piezas fuera.
 function disponibilidad(item) {
   const abiertos = (estado.prestamos || []).filter((p) => p.estado !== "Devuelto" && mismoNombre(p.instrumento, item.instrumento));
   const fuera = abiertos.reduce((s, p) => s + p.cantidad, 0);
+  const revision = incidenciasDe(item);
+  const enRevision = revision.reduce((s, i) => s + (parseInt(i.piezas, 10) || 1), 0);
+  const base = { abiertos, revision, libres: null };
+  if (calibracion(item).nivel === "vencida") return { ...base, nivel: "agotado", texto: "Calibración vencida", libres: 0 };
+
   const total = parseInt(item.existencias, 10);
   if (!(total > 0)) {
-    return fuera ? { nivel: "parcial", texto: `${plural(fuera, "pieza prestada", "piezas prestadas")}`, abiertos }
-                 : { nivel: "libre", texto: "Disponible", abiertos };
+    return fuera || enRevision ? { ...base, nivel: "parcial", texto: [fuera && plural(fuera, "pieza prestada", "piezas prestadas"), enRevision && `${enRevision} en revisión`].filter(Boolean).join(" · ") }
+                               : { ...base, nivel: "libre", texto: "Disponible" };
   }
-  const libres = Math.max(0, total - fuera);
-  if (!fuera) return { nivel: "libre", texto: `Disponible · ${plural(total, "pieza", "piezas")}`, abiertos };
-  if (!libres) return { nivel: "agotado", texto: `Agotado · ${total} de ${total} fuera`, abiertos };
-  return { nivel: "parcial", texto: `${libres} de ${total} disponibles`, abiertos };
+  const libres = Math.max(0, total - fuera - enRevision);
+  const extra = enRevision ? ` · ${enRevision} en revisión` : "";
+  if (!fuera && !enRevision) return { ...base, libres, nivel: "libre", texto: `Disponible · ${plural(total, "pieza", "piezas")}` };
+  if (!libres) return { ...base, libres, nivel: "agotado", texto: fuera ? `Agotado · ${fuera} de ${total} fuera${extra}` : `Sin piezas libres${extra}` };
+  return { ...base, libres, nivel: "parcial", texto: `${libres} de ${total} disponibles${extra}` };
 }
+
+const sePuedePrestar = (item) => disponibilidad(item).nivel !== "agotado";
 
 const plural = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`;
 
@@ -705,7 +834,7 @@ function pintarVistaCatalogo() {
     (estado.catFiltro === "Todas" || c.categoria === estado.catFiltro) &&
     (!texto || [c.instrumento, c.clave, c.descripcion, c.categoria].some((v) => String(v || "").toLowerCase().includes(texto))));
 
-  const prestadosAhora = estado.catalogo.filter((c) => disponibilidad(c).nivel !== "libre").length;
+  const prestadosAhora = estado.catalogo.filter((c) => disponibilidad(c).abiertos.length).length;
   $("catResumen").textContent = `${plural(estado.catalogo.length, "instrumento", "instrumentos")} · ${plural(categorias.length - 1, "categoría", "categorías")}`
     + (estado.prestamos ? ` · ${plural(prestadosAhora, "con piezas prestadas ahora", "con piezas prestadas ahora")}` : "");
 
@@ -722,7 +851,9 @@ function pintarVistaCatalogo() {
     if (item.descripcion) tarjeta.append(crear("span", "cat-desc", item.descripcion));
     const pie = crear("span", "cat-tarjeta-pie");
     pie.append(crear("span", "cat-disponible " + d.nivel, d.texto));
-    if (item.rango) pie.append(crear("span", "cat-rango", item.rango));
+    const cal = calibracion(item);
+    if (cal.nivel === "porVencer") pie.append(crear("span", "cat-disponible parcial", cal.texto));
+    else if (item.rango) pie.append(crear("span", "cat-rango", item.rango));
     tarjeta.append(pie);
     tarjeta.addEventListener("click", () => abrirDetalle(item));
     rejilla.append(tarjeta);
@@ -744,21 +875,39 @@ function abrirDetalle(item) {
 
   const ficha = $("detFicha");
   ficha.innerHTML = "";
-  [["Rango", item.rango], ["Resolución", item.resolucion], ["Existencias", item.existencias], ["Ubicación", item.ubicacion], ["Notas", item.notas]]
+  const cal = calibracion(item);
+  [["Rango", item.rango], ["Resolución", item.resolucion], ["Existencias", item.existencias], ["Ubicación", item.ubicacion], ["Notas", item.notas],
+   ["Calibración", cal.ultima ? `${cal.nivel === "vencida" ? "Venció" : "Vigente hasta"} el ${fechaCorta(cal.proxima)}` : "Sin registro"],
+   ["Última calibración", cal.ultima && `${fechaCorta(fechaISO(cal.ultima.fecha))} · ${cal.ultima.calibro || "—"}`],
+   ["Certificado", cal.ultima?.certificado], ["Frecuencia", item.frecuencia_meses && `Cada ${item.frecuencia_meses} meses`]]
     .filter(([, valor]) => valor)
     .forEach(([nombre, valor]) => { const fila = crear("div"); fila.append(crear("dt", "", nombre), crear("dd", "", valor)); ficha.append(fila); });
 
-  // Quién lo tiene ahora
+  // Quién lo tiene ahora y qué piezas están en revisión
   const quien = $("detQuien");
   quien.innerHTML = "";
   if (d.abiertos.length) {
     quien.append(crear("p", "cat-quien-titulo", "Lo tienen ahora"));
     d.abiertos.forEach((p) => quien.append(crear("p", "cat-quien-fila", `${p.cantidad} × · ${p.nombre} (${p.area}) · ${p.folio} · hace ${tiempoFuera(p).texto}`)));
   }
+  if (d.revision.length) {
+    quien.append(crear("p", "cat-quien-titulo rojo", "En revisión"));
+    d.revision.forEach((i) => quien.append(crear("p", "cat-quien-fila", `${i.piezas || 1} × · ${i.id} · ${i.estado === "En calibración" ? "Esperando calibración" : i.condicion} · ${i.observacion}`)));
+  }
   $("btnPrestarDesdeCatalogo").disabled = d.nivel === "agotado";
-  $("btnPrestarDesdeCatalogo").querySelector("span").textContent = d.nivel === "agotado" ? "Sin piezas disponibles" : "Prestar este instrumento";
+  $("btnPrestarDesdeCatalogo").querySelector("span").textContent = d.nivel !== "agotado" ? "Prestar este instrumento"
+    : cal.nivel === "vencida" ? "No se presta: calibración vencida" : "Sin piezas disponibles";
   $("catDetalle").showModal();
 }
+
+// "Registrar calibración" desde la ficha: pide el PIN si todavía no se escribió
+$("btnCalibrarDesdeCatalogo").addEventListener("click", () => {
+  $("catDetalle").close();
+  if (estado.pin) return abrirCalibrar(estado.catActual);
+  estado.calibrarDespues = estado.catActual;
+  mostrarPantalla("pantallaMantenimiento");
+  mostrarAviso("Escriba el PIN del encargado para registrar la calibración");
+});
 
 $("btnCerrarDetalle").addEventListener("click", () => $("catDetalle").close());
 // Tocar fuera del panel también lo cierra
@@ -781,6 +930,266 @@ function quitarPreseleccion() {
   $("preseleccion").hidden = true;
 }
 $("btnQuitarPreseleccion").addEventListener("click", quitarPreseleccion);
+
+/* ---------------------------------------------------------
+   8b. Calibración e incidencias
+   --------------------------------------------------------- */
+
+// Acepta 2026-11-08 o 08/11/2026 (por si alguien escribe la fecha a mano en la hoja)
+function fechaISO(v) {
+  const s = String(v || "").trim();
+  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (m) return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
+  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  return m ? `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}` : "";
+}
+
+const hoyISO = () => new Date().toLocaleDateString("en-CA");   // yyyy-mm-dd en la hora del iPad
+const fechaCorta = (iso) => new Date(`${iso}T12:00`).toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric" });
+const diasHasta = (iso) => Math.round((new Date(`${iso}T12:00`) - new Date(`${hoyISO()}T12:00`)) / 864e5);
+
+// Suma meses sin pasarse de fin de mes: 31 ene + 1 mes = 28 feb (igual que el servidor)
+function sumarMeses(iso, meses) {
+  const [a, m, d] = iso.split("-").map(Number);
+  const f = new Date(a, m - 1 + meses, 1, 12);
+  f.setDate(Math.min(d, new Date(f.getFullYear(), f.getMonth() + 1, 0).getDate()));
+  return f.toLocaleDateString("en-CA");
+}
+
+// Estado de calibración según la calibración más reciente: vigente, porVencer, vencida o sin
+function calibracion(item) {
+  const ultima = estado.calibraciones
+    .filter((c) => c.clave === item.clave && fechaISO(c.fecha) && fechaISO(c.proxima))
+    .sort((a, b) => fechaISO(b.fecha).localeCompare(fechaISO(a.fecha)))[0];
+  if (!ultima) return { nivel: "sin", texto: "Sin registro de calibración", ultima: null };
+  const proxima = fechaISO(ultima.proxima), dias = diasHasta(proxima);
+  if (dias < 0) return { nivel: "vencida", texto: `Calibración vencida desde el ${fechaCorta(proxima)}`, ultima, proxima, dias };
+  if (dias <= DIAS_AVISO) return { nivel: "porVencer", texto: dias === 0 ? "Calibración vence hoy" : `Calibración vence en ${plural(dias, "día", "días")}`, ultima, proxima, dias };
+  return { nivel: "vigente", texto: `Calibración vigente hasta el ${fechaCorta(proxima)}`, ultima, proxima, dias };
+}
+
+// Incidencias sin resolver de un instrumento (Abierta o En calibración)
+const incidenciasDe = (item) => estado.incidencias.filter((i) => i.estado !== "Resuelta"
+  && (i.clave ? i.clave === item.clave : mismoNombre(i.instrumento, item.instrumento)));
+
+/* ---------------------------------------------------------
+   8c. Pestaña Mantenimiento (solo el encargado, con PIN)
+   --------------------------------------------------------- */
+
+// El PIN se recuerda mientras Safari tenga abierta la pestaña (se borra al cerrarla)
+try { estado.pin = sessionStorage.getItem("managerlab.pin"); } catch (e) { /* sin almacenamiento */ }
+
+function aplicarAccesoMant() {
+  $("formPin").hidden = Boolean(estado.pin);
+  $("mantContenido").hidden = !estado.pin;
+  $("btnSalirMant").hidden = !estado.pin;
+  if (estado.pin) pintarMantenimiento();
+  else setTimeout(() => $("campoPin").focus(), 50);
+}
+
+$("formPin").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const pin = $("campoPin").value.trim();
+  const error = $("errorPin");
+  if (!/^\d{4,8}$/.test(pin)) { error.textContent = "El PIN es de 4 a 8 dígitos."; error.hidden = false; return; }
+  const boton = $("btnPin");
+  boton.disabled = true;
+  try {
+    const respuesta = await enviarApi({ accion: "pin", pin });
+    if (!respuesta.ok) throw new Error(respuesta.error || "PIN incorrecto");
+    estado.pin = pin;
+    try { sessionStorage.setItem("managerlab.pin", pin); } catch (err) { /* sin almacenamiento */ }
+    error.hidden = true;
+    $("campoPin").value = "";
+    aplicarAccesoMant();
+    if (estado.calibrarDespues) { abrirCalibrar(estado.calibrarDespues); estado.calibrarDespues = null; }
+  } catch (err) {
+    if (err instanceof TypeError) marcarConexion(false);
+    error.textContent = err instanceof TypeError ? "No se pudo conectar con el servidor." : err.message;
+    error.hidden = false;
+  } finally {
+    boton.disabled = false;
+  }
+});
+$("campoPin").addEventListener("input", (e) => (e.target.value = e.target.value.replace(/\D/g, "")));
+
+function salirMant() {
+  estado.pin = null;
+  try { sessionStorage.removeItem("managerlab.pin"); } catch (e) { /* sin almacenamiento */ }
+  aplicarAccesoMant();
+}
+$("btnSalirMant").addEventListener("click", salirMant);
+
+// Número rojo en la pestaña: incidencias sin resolver + calibraciones vencidas
+function pintarContadorMant() {
+  const n = estado.incidencias.filter((i) => i.estado !== "Resuelta").length
+    + estado.catalogo.filter((c) => calibracion(c).nivel === "vencida").length;
+  $("mantContador").textContent = n;
+  $("mantContador").hidden = !n;
+}
+
+// Fila de las listas de mantenimiento
+function crearFilaMant(titulo, detalle, extra, insignia, textoBoton, alTocar) {
+  const fila = crear("div", "pendiente grande mant-fila");
+  fila.setAttribute("role", "listitem");
+  const info = crear("div", "pendiente-info");
+  info.append(crear("strong", "", titulo), crear("span", "pendiente-detalle", detalle));
+  if (extra) info.append(crear("span", "mant-extra", extra));
+  const lado = crear("div", "mant-lado");
+  if (insignia) lado.append(crear("span", "insignia-estado " + insignia[0], insignia[1]));
+  const boton = crear("button", "btn btn-secundario pendiente-btn");
+  boton.type = "button";
+  boton.innerHTML = '<i data-lucide="wrench" aria-hidden="true"></i>';
+  boton.append(crear("span", "", textoBoton));
+  boton.setAttribute("aria-label", `${textoBoton}: ${titulo}`);
+  boton.addEventListener("click", alTocar);
+  lado.append(boton);
+  fila.append(info, lado);
+  return fila;
+}
+
+function pintarLista(id, filas, vacio) {
+  const caja = $(id);
+  caja.innerHTML = "";
+  if (!filas.length) caja.append(crear("p", "vacio-pendientes", vacio));
+  filas.forEach((f) => caja.append(f));
+}
+
+function pintarMantenimiento() {
+  const abiertas = estado.incidencias.filter((i) => i.estado !== "Resuelta")
+    .sort((a, b) => (fechaISO(a.fecha) + a.hora).localeCompare(fechaISO(b.fecha) + b.hora));
+  const conCal = estado.catalogo.map((item) => ({ item, cal: calibracion(item) }));
+  const vencidas = conCal.filter((x) => x.cal.nivel === "vencida").sort((a, b) => a.cal.dias - b.cal.dias);
+  const porVencer = conCal.filter((x) => x.cal.nivel === "porVencer").sort((a, b) => a.cal.dias - b.cal.dias);
+  $("mantResumen").textContent = `${plural(abiertas.length, "incidencia sin resolver", "incidencias sin resolver")} · ${plural(vencidas.length, "calibración vencida", "calibraciones vencidas")} · ${porVencer.length} por vencer`;
+
+  pintarLista("mantIncidencias", abiertas.map((i) => {
+    const item = estado.catalogo.find((c) => (i.clave ? c.clave === i.clave : mismoNombre(c.instrumento, i.instrumento)));
+    const enCal = i.estado === "En calibración";
+    return crearFilaMant(`${i.piezas || 1} × ${i.instrumento}`,
+      `${i.id} · ${i.condicion} · ${fechaISO(i.fecha)} · devolvió ${i.nombre} (${i.area}) · préstamo ${i.folio}`,
+      i.observacion, enCal ? ["prestado", "Esperando calibración"] : ["abierta", "Abierta"],
+      enCal ? "Registrar calibración" : "Resolver",
+      () => (enCal && item ? abrirCalibrar(item) : abrirResolver(i)));
+  }), "No hay instrumentos dañados ni incompletos.");
+
+  const filaCal = ({ item, cal }) => crearFilaMant(item.instrumento,
+    `${item.clave} · ${cal.nivel === "vencida" ? "venció" : "vence"} el ${fechaCorta(cal.proxima)} · certificado ${cal.ultima.certificado || "—"}`,
+    "", cal.nivel === "vencida" ? ["abierta", `Hace ${plural(-cal.dias, "día", "días")}`] : ["prestado", `En ${plural(cal.dias, "día", "días")}`],
+    "Registrar calibración", () => abrirCalibrar(item));
+  pintarLista("mantVencidas", vencidas.map(filaCal), "Ningún instrumento tiene la calibración vencida.");
+  pintarLista("mantPorVencer", porVencer.map(filaCal), `Ninguna calibración vence en los próximos ${DIAS_AVISO} días.`);
+  pintarIconos();
+}
+
+// El nombre del encargado se recuerda en este iPad para no escribirlo cada vez
+const ENCARGADO = "managerlab.encargado";
+function prepararEncargado(id) {
+  try { $(id).value = localStorage.getItem(ENCARGADO) || ""; } catch (e) { /* sin almacenamiento */ }
+}
+function guardarEncargado(valor) {
+  try { localStorage.setItem(ENCARGADO, valor); } catch (e) { /* sin almacenamiento */ }
+}
+
+function abrirDialogoMant(meta, titulo, descripcion, formulario) {
+  $("mantMeta").textContent = meta;
+  $("mantTitulo").textContent = titulo;
+  $("mantDescripcion").textContent = descripcion;
+  $("mantDescripcion").hidden = !descripcion;
+  $("formResolver").hidden = formulario !== "formResolver";
+  $("formCalibrar").hidden = formulario !== "formCalibrar";
+  document.querySelectorAll("#mantDialogo .alerta-error").forEach((e) => (e.hidden = true));
+  $("mantDialogo").showModal();
+}
+
+function abrirResolver(inc) {
+  estado.mantActual = inc;
+  $("formResolver").reset();
+  prepararEncargado("campoResolvio");
+  abrirDialogoMant(`${inc.id} · ${inc.condicion}`, `${inc.piezas || 1} × ${inc.instrumento}`, inc.observacion, "formResolver");
+}
+
+function abrirCalibrar(item) {
+  estado.mantActual = item;
+  $("formCalibrar").reset();
+  const hoy = hoyISO();
+  Object.assign($("campoFechaCal"), { value: hoy, max: hoy });
+  // Sugiere quién calibró la última vez y los laboratorios ya usados
+  const cal = calibracion(item);
+  $("campoCalibro").value = cal.ultima?.calibro || "";
+  $("listaCalibro").innerHTML = "";
+  [...new Set(estado.calibraciones.map((c) => c.calibro).filter(Boolean))].forEach((v) => $("listaCalibro").append(new Option(v)));
+  prepararEncargado("campoRegistro");
+  actualizarProxima();
+  abrirDialogoMant(`${item.clave} · cada ${item.frecuencia_meses || 12} meses`, item.instrumento, cal.texto, "formCalibrar");
+}
+
+function actualizarProxima() {
+  const fecha = $("campoFechaCal").value, meses = parseInt(estado.mantActual?.frecuencia_meses, 10) || 12;
+  $("proximaCal").textContent = fecha ? `Próxima calibración: ${fechaCorta(sumarMeses(fecha, meses))}` : "";
+}
+$("campoFechaCal").addEventListener("input", actualizarProxima);
+
+$("btnCerrarMant").addEventListener("click", () => $("mantDialogo").close());
+$("mantDialogo").addEventListener("click", (e) => { if (e.target === $("mantDialogo")) $("mantDialogo").close(); });
+
+// Envía una acción del encargado. Si el PIN ya no es válido, vuelve a pedirlo.
+async function enviarMant(cuerpo, boton, error) {
+  boton.disabled = true;
+  error.hidden = true;
+  try {
+    const respuesta = await enviarApi({ ...cuerpo, pin: estado.pin });
+    if (!respuesta.ok) {
+      if (respuesta.error === "PIN incorrecto") { $("mantDialogo").close(); salirMant(); }
+      throw new Error(respuesta.error || "La API rechazó el registro.");
+    }
+    return respuesta;
+  } catch (err) {
+    if (err instanceof TypeError) marcarConexion(false);
+    error.textContent = err instanceof TypeError ? "No se pudo conectar con el servidor. Intente de nuevo." : `No se guardó: ${err.message}`;
+    error.hidden = false;
+    if (!$("mantDialogo").open) mostrarAviso(error.textContent);
+    return null;
+  } finally {
+    boton.disabled = false;
+  }
+}
+
+$("formResolver").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const inc = estado.mantActual;
+  const resolucion = $("formResolver").elements.resolucion.value;
+  const resolvio = $("campoResolvio").value.trim();
+  guardarEncargado(resolvio);
+  const r = await enviarMant({ accion: "resolver_incidencia", id: inc.id, resolucion, nota: $("campoNota").value.trim(), resolvio },
+    $("btnResolver"), $("errorResolver"));
+  if (!r) return;
+  Object.assign(inc, { estado: r.estado, resolucion, fecha_resolucion: r.fecha_resolucion });
+  const item = estado.catalogo.find((c) => c.clave === inc.clave);
+  if (item && r.existencias != null) item.existencias = String(r.existencias);
+  $("mantDialogo").close();
+  mostrarAviso(resolucion === "Reparado" ? `${inc.instrumento} vuelve a estar disponible`
+    : resolucion === "Baja" ? `${inc.instrumento} dado de baja` : `${inc.instrumento} queda esperando calibración`);
+  pintarTodo();
+});
+
+$("formCalibrar").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const item = estado.mantActual;
+  const fecha = $("campoFechaCal").value, certificado = $("campoCertificado").value.trim();
+  if (!fecha || fecha > hoyISO()) { $("errorCalibrar").textContent = "Elija una fecha de hoy o anterior."; $("errorCalibrar").hidden = false; return; }
+  if (!certificado) { $("errorCalibrar").textContent = "Escriba el número de certificado."; $("errorCalibrar").hidden = false; $("campoCertificado").focus(); return; }
+  const registro = $("campoRegistro").value.trim();
+  guardarEncargado(registro);
+  const cuerpo = { accion: "calibracion", clave_instrumento: item.clave, fecha, certificado, calibro: $("campoCalibro").value.trim(), registro };
+  const r = await enviarMant(cuerpo, $("btnCalibrar"), $("errorCalibrar"));
+  if (!r) return;
+  estado.calibraciones.push({ fecha: r.fecha, clave: item.clave, instrumento: item.instrumento, certificado, calibro: cuerpo.calibro, proxima: r.proxima, registro });
+  incidenciasDe(item).filter((i) => i.estado === "En calibración").forEach((i) => (i.estado = "Resuelta"));
+  $("mantDialogo").close();
+  mostrarAviso(`Calibración registrada · próxima el ${fechaCorta(r.proxima)}`);
+  pintarTodo();
+});
 
 /* ---------------------------------------------------------
    9. Generar credencial
@@ -981,6 +1390,9 @@ console.assert(mismaMatricula("097815", "97815") && !mismaMatricula("104523", "1
 console.assert(tiempoFuera({ fecha: "2000-01-01", hora: "08:00" }).vencido === true, "préstamo vencido");
 console.assert(formatearDuracion(75.2) === "1:15.2" && formatearDuracion(9.5) === "0:09.5", "formato del cronómetro");
 console.assert(disponibilidad({ instrumento: "Prueba", existencias: "2" }).nivel === "libre" && disponibilidad({ instrumento: "Prueba" }).texto === "Disponible", "disponibilidad sin préstamos");
+console.assert(fechaISO("08/11/2026") === "2026-11-08" && fechaISO("2026-1-5") === "2026-01-05" && fechaISO("ayer") === "", "fechas de la hoja");
+console.assert(sumarMeses("2026-01-31", 1) === "2026-02-28" && sumarMeses("2026-11-08", 12) === "2027-11-08", "próxima calibración");
+console.assert(calibracion({ clave: "X" }).nivel === "sin" && diasHasta(hoyISO()) === 0, "calibración sin registro");
 console.assert(leerCredencial(textoParaQR({ m: "104523", n: "Begoña Núñez", a: "Metrología", j: "Ing. Raúl" }))?.nombre === "Begoña Núñez", "acentos en el QR");
 
 /* ---------------------------------------------------------

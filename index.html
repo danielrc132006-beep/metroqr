@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <!-- Fuentes de la plantilla: Inter (texto), Space Grotesk (títulos), JetBrains Mono (etiquetas) -->
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500&family=JetBrains+Mono:wght@400&display=swap">
-  <link rel="stylesheet" href="styles.css?v=20261103">
+  <link rel="stylesheet" href="styles.css?v=20261108">
 </head>
 <body>
 
@@ -34,6 +34,10 @@
       </button>
       <button class="pestana" role="tab" aria-selected="false" aria-controls="pantallaCatalogo" data-pantalla="pantallaCatalogo">
         <i data-lucide="library" aria-hidden="true"></i><span>Catálogo</span>
+      </button>
+      <button class="pestana" role="tab" aria-selected="false" aria-controls="pantallaMantenimiento" data-pantalla="pantallaMantenimiento">
+        <i data-lucide="wrench" aria-hidden="true"></i><span>Mantenimiento</span>
+        <span class="pestana-contador num" id="mantContador" aria-label="pendientes" hidden></span>
       </button>
       </div>
       <!-- Enlace a la otra página (no es una pestaña de esta pantalla) -->
@@ -210,6 +214,43 @@
       <div class="cat-rejilla" id="catRejilla"></div>
     </section>
 
+    <!-- ============ PANTALLA 4: MANTENIMIENTO (encargado, con PIN) ============ -->
+    <section id="pantallaMantenimiento" class="pantalla" role="tabpanel" hidden>
+      <div class="cat-cabeza">
+        <div>
+          <h1>Mantenimiento</h1>
+          <p class="subtitulo" id="mantResumen">Reparaciones y calibraciones del laboratorio</p>
+        </div>
+        <button class="btn btn-secundario" id="btnSalirMant" type="button" hidden><i data-lucide="lock" aria-hidden="true"></i>Cerrar sesión</button>
+      </div>
+
+      <form class="tarjeta mant-pin" id="formPin" novalidate>
+        <span class="mant-pin-icono"><i data-lucide="lock" aria-hidden="true"></i></span>
+        <h2>Acceso del encargado</h2>
+        <p class="nota">Escriba el PIN para marcar reparaciones y registrar calibraciones.</p>
+        <label for="campoPin" class="solo-lector">PIN del encargado</label>
+        <input id="campoPin" class="campo num" type="password" inputmode="numeric" maxlength="8" autocomplete="off" placeholder="PIN">
+        <p class="alerta-error" id="errorPin" role="alert" hidden></p>
+        <button class="btn btn-principal" id="btnPin" type="submit"><i data-lucide="lock-open" aria-hidden="true"></i><span>Entrar</span></button>
+      </form>
+
+      <div class="mant-contenido" id="mantContenido" hidden>
+        <section class="tarjeta mant-grupo" aria-labelledby="tituloIncidencias">
+          <h2 class="titulo-seccion" id="tituloIncidencias">Instrumentos dañados o incompletos</h2>
+          <div class="pendientes" id="mantIncidencias" role="list" aria-labelledby="tituloIncidencias"></div>
+        </section>
+        <section class="tarjeta mant-grupo" aria-labelledby="tituloVencidas">
+          <h2 class="titulo-seccion" id="tituloVencidas">Calibración vencida</h2>
+          <div class="pendientes" id="mantVencidas" role="list" aria-labelledby="tituloVencidas"></div>
+        </section>
+        <section class="tarjeta mant-grupo" aria-labelledby="tituloPorVencer">
+          <h2 class="titulo-seccion" id="tituloPorVencer">Por vencer (próximos 30 días)</h2>
+          <div class="pendientes" id="mantPorVencer" role="list" aria-labelledby="tituloPorVencer"></div>
+        </section>
+        <p class="nota">Para calibrar cualquier otro instrumento, ábralo en el Catálogo y toque «Registrar calibración».</p>
+      </div>
+    </section>
+
     <!-- ============ PANTALLA 2: GENERAR CREDENCIAL ============ -->
     <section id="pantallaCredencial" class="pantalla" role="tabpanel" hidden>
       <div class="credencial-rejilla">
@@ -289,6 +330,68 @@
     <button class="btn btn-principal" id="btnPrestarDesdeCatalogo" type="button">
       <i data-lucide="log-out" aria-hidden="true"></i><span>Prestar este instrumento</span>
     </button>
+    <button class="btn btn-secundario" id="btnCalibrarDesdeCatalogo" type="button">
+      <i data-lucide="wrench" aria-hidden="true"></i><span>Registrar calibración</span>
+    </button>
+  </dialog>
+
+  <!-- Mantenimiento: resolver una incidencia o registrar una calibración -->
+  <dialog class="cat-detalle" id="mantDialogo" aria-labelledby="mantTitulo">
+    <div class="cat-detalle-cabeza">
+      <div>
+        <p class="cat-detalle-meta" id="mantMeta"></p>
+        <h2 id="mantTitulo"></h2>
+      </div>
+      <button class="btn btn-fantasma cat-cerrar" id="btnCerrarMant" type="button" aria-label="Cerrar"><i data-lucide="x" aria-hidden="true"></i></button>
+    </div>
+    <p class="cat-detalle-desc" id="mantDescripcion"></p>
+
+    <form class="mant-form" id="formResolver" novalidate>
+      <fieldset class="opciones">
+        <legend class="titulo-seccion">¿Cómo se resolvió?</legend>
+        <label class="opcion"><input type="radio" name="resolucion" value="Reparado" checked>
+          <span><strong>Reparado, listo para prestar</strong><small>Vuelve a estar disponible ahora mismo</small></span></label>
+        <label class="opcion"><input type="radio" name="resolucion" value="Calibración">
+          <span><strong>Reparado, requiere calibración</strong><small>Sigue bloqueado hasta registrar su calibración</small></span></label>
+        <label class="opcion"><input type="radio" name="resolucion" value="Baja">
+          <span><strong>Dado de baja</strong><small>No tiene arreglo: se resta de las existencias</small></span></label>
+      </fieldset>
+      <div class="grupo">
+        <label for="campoNota">Nota (opcional)</label>
+        <input id="campoNota" class="campo" maxlength="200" autocomplete="off" placeholder="Ej. se cambió la punta">
+      </div>
+      <div class="grupo">
+        <label for="campoResolvio">Encargado</label>
+        <input id="campoResolvio" class="campo" maxlength="60" autocomplete="off" placeholder="Nombre de quien lo resolvió">
+      </div>
+      <p class="alerta-error" id="errorResolver" role="alert" hidden></p>
+      <button class="btn btn-principal" id="btnResolver" type="submit"><i data-lucide="check" aria-hidden="true"></i><span>Guardar</span></button>
+    </form>
+
+    <form class="mant-form" id="formCalibrar" novalidate hidden>
+      <div class="mant-campos">
+        <div class="grupo">
+          <label for="campoFechaCal">Fecha de calibración</label>
+          <input id="campoFechaCal" class="campo" type="date">
+        </div>
+        <div class="grupo">
+          <label for="campoCertificado">Número de certificado</label>
+          <input id="campoCertificado" class="campo" maxlength="40" autocomplete="off" placeholder="CAL-2026-0150">
+        </div>
+      </div>
+      <div class="grupo">
+        <label for="campoCalibro">Quién calibró</label>
+        <input id="campoCalibro" class="campo" maxlength="60" autocomplete="off" list="listaCalibro" placeholder="Laboratorio externo o interno">
+        <datalist id="listaCalibro"></datalist>
+      </div>
+      <div class="grupo">
+        <label for="campoRegistro">Encargado</label>
+        <input id="campoRegistro" class="campo" maxlength="60" autocomplete="off" placeholder="Nombre de quien registra">
+      </div>
+      <p class="mant-proxima" id="proximaCal"></p>
+      <p class="alerta-error" id="errorCalibrar" role="alert" hidden></p>
+      <button class="btn btn-principal" id="btnCalibrar" type="submit"><i data-lucide="check" aria-hidden="true"></i><span>Registrar calibración</span></button>
+    </form>
   </dialog>
 
   <div class="aviso-flotante" id="avisoFlotante" role="status" aria-live="polite"></div>
@@ -299,7 +402,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <!-- Código propio -->
   <!-- El ?v= obliga al navegador a bajar la versión nueva: cámbienlo (ej. la fecha) cada vez que actualicen archivos -->
-  <script src="config.js?v=20261103"></script>
-  <script src="app.js?v=20261103"></script>
+  <script src="config.js?v=20261108"></script>
+  <script src="app.js?v=20261108"></script>
 </body>
 </html>

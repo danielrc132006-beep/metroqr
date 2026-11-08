@@ -590,7 +590,75 @@ select.campo option { background: var(--lienzo); color: var(--texto); }
   .barra { gap: 12px; }
   .marca { gap: 12px; }
   .marca-texto { padding-left: 12px; }
-  .marca-texto span { display: none; }
+  .marca-texto { display: none; }   /* con 5 pestañas solo cabe el logo */
   .pestana { padding: 0 14px; font-size: 15px; gap: 6px; }
   .pestana svg.lucide { width: 20px; height: 20px; }
+}
+
+/* ---------- Calibración y estado al devolver ---------- */
+/* Tarjeta de préstamo bloqueada: sin piezas o con la calibración vencida */
+.instrumento.bloqueado { opacity: .6; cursor: not-allowed; }
+.instrumento.bloqueado:hover { background: var(--vidrio); }
+.instrumento-estado { justify-self: start; margin-top: 4px; padding: 3px 8px; border-radius: var(--radio-chico); font-size: 13px; font-weight: 500; }
+.instrumento-estado.agotado { background: rgba(198, 40, 40, .18); color: var(--rojo-texto); }
+.instrumento-estado.parcial { background: rgba(230, 155, 0, .14); color: var(--ambar-texto); }
+.cat-quien-titulo.rojo { color: var(--rojo-texto); }
+.cat-detalle .btn-secundario { width: 100%; }
+
+/* Bien / Dañado / Incompleto en cada préstamo que se devuelve */
+.pendiente.grande { flex-wrap: wrap; }
+.condicion { flex-basis: 100%; display: grid; gap: 12px; padding-top: 12px; box-shadow: inset 0 1px 0 var(--borde); }
+.condicion-opciones { display: flex; flex-wrap: wrap; gap: 8px; }
+.condicion-opciones button {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 48px; padding: 0 18px; border: 0; border-radius: 999px;
+  background: var(--vidrio); color: var(--texto-suave); font-weight: 500; box-shadow: var(--linea);
+  transition: background-color var(--dur) var(--curva), color var(--dur) var(--curva);
+}
+.condicion-opciones button svg.lucide { width: 18px; height: 18px; }
+.condicion-opciones button:hover { background: var(--vidrio-claro); color: var(--blanco); }
+.condicion-opciones .condicion-bien[aria-checked="true"] { background: rgba(46, 125, 50, .22); color: var(--verde-texto); box-shadow: inset 0 0 0 1px rgba(127, 203, 131, .45); }
+.condicion-opciones .condicion-mal[aria-checked="true"] { background: rgba(198, 40, 40, .2); color: var(--rojo-texto); box-shadow: inset 0 0 0 1px rgba(241, 155, 155, .45); }
+.condicion-detalle { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: end; }
+.condicion-detalle .grupo { margin: 0; }
+.condicion-piezas .campo { min-width: 120px; }
+
+/* ---------- Pestaña Mantenimiento ---------- */
+.pestana-contador {
+  display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px;
+  background: var(--rojo); color: var(--blanco); font-size: 13px; font-weight: 600; line-height: 1;
+}
+.mant-pin { max-width: 440px; margin: 24px auto 0; padding: 32px; display: grid; gap: 14px; justify-items: center; text-align: center; }
+.mant-pin-icono { display: grid; place-items: center; width: 64px; height: 64px; border-radius: 50%; background: var(--vidrio-activo); color: var(--azul-plano); box-shadow: var(--linea); }
+.mant-pin-icono svg.lucide { width: 30px; height: 30px; }
+.mant-pin h2 { font-size: 24px; }
+.mant-pin .campo { max-width: 220px; text-align: center; font-size: 26px; letter-spacing: .3em; }
+.mant-contenido { display: grid; gap: 16px; }
+.mant-grupo { padding: 24px; }
+.mant-fila { align-items: center; }
+.mant-extra { font-size: 14px; color: var(--texto-suave); }
+.mant-lado { display: flex; align-items: center; gap: 12px; flex: none; }
+.insignia-estado.abierta { background: rgba(198, 40, 40, .18); color: var(--rojo-texto); box-shadow: inset 0 0 0 1px rgba(241, 155, 155, .3); }
+
+/* Diálogo de mantenimiento */
+.mant-form { display: grid; gap: 4px; }
+.mant-form[hidden] { display: none; }
+.opciones { margin: 0 0 12px; padding: 0; border: 0; display: grid; gap: 8px; }
+.opcion { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border-radius: 12px; background: var(--vidrio); box-shadow: var(--linea); cursor: pointer; }
+.opcion:has(input:checked) { background: var(--vidrio-activo); box-shadow: inset 0 0 0 2px var(--azul-plano); }
+.opcion input { width: 22px; height: 22px; margin: 2px 0 0; accent-color: var(--violeta); flex: none; }
+.opcion span { display: grid; gap: 2px; }
+.opcion strong { font-weight: 600; color: var(--texto-titulo); }
+.opcion small { font-size: 14px; color: var(--texto-ayuda); }
+.mant-campos { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+.mant-proxima { font-family: var(--fuente-mono); font-size: 14px; color: var(--verde-texto); margin-bottom: 8px; }
+.mant-proxima:empty { display: none; }
+@media (max-width: 640px) {
+  .mant-lado { width: 100%; justify-content: space-between; }
+  .mant-campos, .condicion-detalle { grid-template-columns: 1fr; }
+}
+.pendiente.grande > .pendiente-info { flex: 1 1 0; }   /* el texto largo se acomoda y el botón queda a la derecha */
+/* iPad vertical: las 5 pestañas comparten la fila sin salirse */
+@media (max-width: 1000px) {
+  .pestana { min-width: 0; padding: 0 8px; gap: 6px; font-size: 15px; }
+  .pestana svg.lucide { display: none; }   /* sin íconos para que quepan los 5 textos */
 }
