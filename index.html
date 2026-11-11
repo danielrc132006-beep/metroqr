@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <!-- Fuentes de la plantilla: Inter (texto), Space Grotesk (títulos), JetBrains Mono (etiquetas) -->
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500&family=JetBrains+Mono:wght@400&display=swap">
-  <link rel="stylesheet" href="styles.css?v=20261110">
+  <link rel="stylesheet" href="styles.css?v=20261111">
 </head>
 <body>
 
@@ -227,7 +227,9 @@
       <form class="tarjeta mant-pin" id="formPin" novalidate>
         <span class="mant-pin-icono"><i data-lucide="lock" aria-hidden="true"></i></span>
         <h2>Acceso del encargado</h2>
-        <p class="nota">Escriba el PIN para revisar devoluciones, marcar reparaciones y registrar calibraciones.</p>
+        <p class="nota">Escriba su nombre y el PIN para revisar devoluciones, marcar reparaciones y registrar calibraciones.</p>
+        <label for="campoEncargado" class="solo-lector">Su nombre</label>
+        <input id="campoEncargado" class="campo mant-nombre" maxlength="60" autocomplete="off" placeholder="Su nombre">
         <label for="campoPin" class="solo-lector">PIN del encargado</label>
         <input id="campoPin" class="campo num" type="password" inputmode="numeric" maxlength="8" autocomplete="off" placeholder="PIN">
         <p class="alerta-error" id="errorPin" role="alert" hidden></p>
@@ -435,7 +437,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <!-- Código propio -->
   <!-- El ?v= obliga al navegador a bajar la versión nueva: cámbienlo (ej. la fecha) cada vez que actualicen archivos -->
-  <script src="config.js?v=20261110"></script>
-  <script src="app.js?v=20261110"></script>
+  <script src="config.js?v=20261111"></script>
+  <script src="app.js?v=20261111"></script>
 </body>
 </html>

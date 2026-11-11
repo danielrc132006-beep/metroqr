@@ -953,18 +953,26 @@ const incidenciasDe = (item) => estado.incidencias.filter((i) => i.estado !== "R
 // El PIN se recuerda mientras Safari tenga abierta la pestaña (se borra al cerrarla)
 try { estado.pin = sessionStorage.getItem("managerlab.pin"); } catch (e) { /* sin almacenamiento */ }
 
+// Para entrar se necesitan el PIN y el nombre de quien revisa (queda en cada aprobación)
 function aplicarAccesoMant() {
-  $("formPin").hidden = Boolean(estado.pin);
-  $("mantContenido").hidden = !estado.pin;
-  $("btnSalirMant").hidden = !estado.pin;
-  if (estado.pin) pintarMantenimiento();
-  else setTimeout(() => $("campoPin").focus(), 50);
+  const dentro = Boolean(estado.pin && encargadoGuardado());
+  $("formPin").hidden = dentro;
+  $("mantContenido").hidden = !dentro;
+  $("btnSalirMant").hidden = !dentro;
+  if (dentro) pintarMantenimiento();
+  else {
+    $("mantResumen").textContent = "";
+    prepararEncargado("campoEncargado");
+    setTimeout(() => $($("campoEncargado").value ? "campoPin" : "campoEncargado").focus(), 50);
+  }
 }
 
 $("formPin").addEventListener("submit", async (e) => {
   e.preventDefault();
   const pin = $("campoPin").value.trim();
   const error = $("errorPin");
+  const nombre = $("campoEncargado").value.trim();
+  if (nombre.length < 3) { error.textContent = "Escriba su nombre: queda registrado en cada revisión."; error.hidden = false; $("campoEncargado").focus(); return; }
   if (!/^\d{4,8}$/.test(pin)) { error.textContent = "El PIN es de 4 a 8 dígitos."; error.hidden = false; return; }
   const boton = $("btnPin");
   boton.disabled = true;
@@ -972,6 +980,7 @@ $("formPin").addEventListener("submit", async (e) => {
     const respuesta = await enviarApi({ accion: "pin", pin });
     if (!respuesta.ok) throw new Error(respuesta.error || "PIN incorrecto");
     estado.pin = pin;
+    guardarEncargado(nombre);
     try { sessionStorage.setItem("managerlab.pin", pin); } catch (err) { /* sin almacenamiento */ }
     error.hidden = true;
     $("campoPin").value = "";
@@ -1041,7 +1050,7 @@ function pintarMantenimiento() {
   const vencidas = conCal.filter((x) => x.cal.nivel === "vencida").sort((a, b) => a.cal.dias - b.cal.dias);
   const porVencer = conCal.filter((x) => x.cal.nivel === "porVencer").sort((a, b) => a.cal.dias - b.cal.dias);
   const revisar = porRevisar();
-  $("mantResumen").textContent = `${plural(revisar.length, "devolución por revisar", "devoluciones por revisar")} · ${plural(abiertas.length, "incidencia sin resolver", "incidencias sin resolver")} · ${plural(vencidas.length, "calibración vencida", "calibraciones vencidas")} · ${porVencer.length} por vencer`;
+  $("mantResumen").textContent = `Revisa: ${encargadoGuardado()} · ${plural(revisar.length, "devolución por revisar", "devoluciones por revisar")} · ${plural(abiertas.length, "incidencia sin resolver", "incidencias sin resolver")} · ${plural(vencidas.length, "calibración vencida", "calibraciones vencidas")} · ${porVencer.length} por vencer`;
 
   pintarRevisiones(revisar);
 
@@ -1158,6 +1167,7 @@ $("formRevisar").addEventListener("submit", async (e) => {
   const observacion = $("campoProblema").value.trim();
   if (!observacion) { $("errorRevisar").textContent = "Describa qué le encontró al instrumento."; $("errorRevisar").hidden = false; $("campoProblema").focus(); return; }
   const reviso = $("campoReviso").value.trim();
+  if (!reviso) { $("errorRevisar").textContent = "Escriba el nombre del encargado que revisa."; $("errorRevisar").hidden = false; $("campoReviso").focus(); return; }
   guardarEncargado(reviso);
   const datos = { condicion: $("formRevisar").elements.condicionRev.value, observacion, piezas: Number($("campoPiezasRev").value) || 1,
                   requiere_calibracion: $("campoReqCal").checked, reviso };

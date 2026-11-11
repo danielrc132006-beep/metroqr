@@ -671,3 +671,4 @@ select.campo option { background: var(--lienzo); color: var(--texto); }
 .aviso-discrepancia { margin: 0 0 10px; font-size: 14px; font-weight: 500; color: var(--ambar-texto); }
 #formRevisar > .opcion { margin-bottom: 12px; }
 .mant-lado .btn-principal.pendiente-btn { width: auto; min-height: 44px; font-size: 15px; }
+.mant-pin .campo.mant-nombre { max-width: 320px; font-size: 18px; letter-spacing: 0; }
