@@ -562,7 +562,7 @@ function tiempoFuera(p) {
 function pendientesDelTrabajador() {
   if (!estado.prestamos || !estado.trabajador) return [];
   return estado.prestamos
-    .filter((p) => mismaMatricula(p.matricula, estado.trabajador.matricula) && p.estado !== "Devuelto")
+    .filter((p) => mismaMatricula(p.matricula, estado.trabajador.matricula) && p.estado === "Prestado")
     .sort((a, b) => (a.fecha + a.hora).localeCompare(b.fecha + b.hora));   // el más antiguo primero
 }
 
@@ -593,13 +593,13 @@ function crearFilaPendiente(p, grande) {
   return fila;
 }
 
-// Bien / Dañado / Incompleto de un préstamo que se devuelve. Si no es "Bien" pide qué pasó.
+// Bien / Dañado / Incompleto: lo que el trabajador declara. El encargado lo confirma al revisarlo.
 function crearCondicion(p) {
-  const c = estado.condiciones[p.folio] || (estado.condiciones[p.folio] = { condicion: "Bien", observacion: "", piezas: 1 });
+  const c = estado.condiciones[p.folio] || (estado.condiciones[p.folio] = { condicion: "Bien", observacion: "" });
   const caja = crear("div", "condicion");
   const grupo = crear("div", "condicion-opciones");
   grupo.setAttribute("role", "radiogroup");
-  grupo.setAttribute("aria-label", `Cómo regresó ${p.instrumento}`);
+  grupo.setAttribute("aria-label", `Cómo regresa ${p.instrumento}`);
   const detalle = crear("div", "condicion-detalle");
 
   const pintar = () => {
@@ -621,28 +621,15 @@ function crearCondicion(p) {
     grupo.append(b);
   });
 
-  // Qué pasó (obligatorio) y cuántas piezas, si el préstamo fue de varias
   const id = "obs-" + p.folio;
   const campo = crear("div", "grupo");
-  const etiqueta = crear("label", "", "¿Qué le pasó? (obligatorio)");
+  const etiqueta = crear("label", "", "Comentario (opcional)");
   etiqueta.htmlFor = id;
   const input = crear("input", "campo");
-  Object.assign(input, { id, maxLength: 200, autocomplete: "off", placeholder: "Ej. punta doblada, falta el estuche", value: c.observacion });
-  input.addEventListener("input", () => { c.observacion = input.value; input.classList.remove("invalido"); });
+  Object.assign(input, { id, maxLength: 200, autocomplete: "off", placeholder: "Ej. se cayó, falta el estuche", value: c.observacion });
+  input.addEventListener("input", () => (c.observacion = input.value));
   campo.append(etiqueta, input);
   detalle.append(campo);
-  if (p.cantidad > 1) {
-    const grupoPiezas = crear("div", "grupo condicion-piezas");
-    const etiquetaPiezas = crear("label", "", "Piezas afectadas");
-    etiquetaPiezas.htmlFor = "piezas-" + p.folio;
-    const lista = crear("select", "campo");
-    lista.id = "piezas-" + p.folio;
-    for (let n = 1; n <= p.cantidad; n++) lista.add(new Option(`${n} de ${p.cantidad}`, n));
-    lista.value = c.piezas;
-    lista.addEventListener("change", () => (c.piezas = Number(lista.value)));
-    grupoPiezas.append(etiquetaPiezas, lista);
-    detalle.append(grupoPiezas);
-  }
   caja.append(grupo, detalle);
   pintar();
   return caja;
@@ -673,6 +660,10 @@ function pintarHistorial() {
     caja.append(aviso);
   }
 
+  // Devoluciones donde dijo "Bien" y el encargado encontró un problema
+  const discrepancias = estado.prestamos.filter((p) => mismaMatricula(p.matricula, estado.trabajador.matricula) && p.discrepancia === "Sí").length;
+  if (discrepancias) caja.append(crear("p", "aviso-discrepancia", `${plural(discrepancias, "devolución", "devoluciones")} con discrepancia`));
+
   if (!recientes.length) caja.append(crear("p", "nota", "Es su primer préstamo."));
   else {
     const lista = crear("ul", "recientes");
@@ -680,8 +671,8 @@ function pintarHistorial() {
       const li = crear("li", "reciente");
       const texto = crear("span", "reciente-texto");
       texto.append(crear("span", "", `${p.cantidad} × ${p.instrumento}`), crear("small", "", `${p.fecha} · ${p.folio}`));
-      const devuelto = p.estado === "Devuelto";
-      li.append(texto, crear("span", "insignia-estado " + (devuelto ? "devuelto" : "prestado"), devuelto ? "Devuelto" : "Prestado"));
+      const clase = { Devuelto: "devuelto", "Por revisar": "revisar" }[p.estado] || "prestado";
+      li.append(texto, crear("span", "insignia-estado " + clase, p.estado));
       lista.append(li);
     });
     caja.append(crear("p", "recientes-titulo", "Últimos préstamos"), lista);
@@ -708,15 +699,6 @@ $("campoRecibio").addEventListener("input", () => {
 // Envía una devolución por cada préstamo (uno tras otro) y actualiza la pantalla
 async function devolverPrestamos(lista, boton) {
   if (estado.devolviendo || !lista.length) return;
-  // Si alguno regresó mal y no dice qué pasó, no se envía nada
-  const sinObservacion = lista.find((p) => { const c = estado.condiciones[p.folio]; return c && c.condicion !== "Bien" && !c.observacion.trim(); });
-  if (sinObservacion) {
-    const input = $("obs-" + sinObservacion.folio);
-    $("errorDevolucion").textContent = `Describa qué le pasó a ${sinObservacion.instrumento} (${sinObservacion.folio}).`;
-    $("errorDevolucion").hidden = false;
-    if (input) { input.classList.add("invalido"); input.focus(); }
-    return;
-  }
   estado.devolviendo = true;
   const textoOriginal = boton.querySelector("span").textContent;
   boton.disabled = true;
@@ -727,19 +709,11 @@ async function devolverPrestamos(lista, boton) {
   try {
     for (const [i, p] of lista.entries()) {
       boton.querySelector("span").textContent = lista.length > 1 ? `Guardando ${i + 1} de ${lista.length}...` : "Guardando...";
-      const c = estado.condiciones[p.folio] || { condicion: "Bien", observacion: "", piezas: 1 };
-      const respuesta = await enviarApi({ accion: "devolucion", folio: p.folio, recibio,
-        condicion: c.condicion, observacion: c.observacion.trim(), piezas: c.piezas });
+      const c = estado.condiciones[p.folio] || { condicion: "Bien", observacion: "" };
+      const respuesta = await enviarApi({ accion: "devolucion", folio: p.folio, recibio, condicion: c.condicion, observacion: c.observacion.trim() });
       if (!respuesta.ok) throw new Error(respuesta.error || "La API rechazó la devolución.");
-      Object.assign(p, { estado: "Devuelto", fecha_devolucion: respuesta.fecha_devolucion, hora_devolucion: respuesta.hora_devolucion, recibio, condicion: c.condicion });
-      // La incidencia aparece de inmediato en el catálogo y en Mantenimiento
-      if (respuesta.incidencia) estado.incidencias.push({
-        id: respuesta.incidencia, fecha: respuesta.fecha_devolucion, hora: respuesta.hora_devolucion, folio: p.folio,
-        clave: estado.catalogo.find((i) => mismoNombre(i.instrumento, p.instrumento))?.clave || "", instrumento: p.instrumento,
-        piezas: String(c.piezas), matricula: p.matricula, nombre: p.nombre, area: p.area,
-        condicion: c.condicion, observacion: c.observacion.trim(), estado: "Abierta"
-      });
-      p.incidencia = respuesta.incidencia || "";
+      // Queda "Por revisar": no se presta hasta que el encargado lo revise en Mantenimiento
+      Object.assign(p, { estado: "Por revisar", fecha_devolucion: respuesta.fecha_devolucion, hora_devolucion: respuesta.hora_devolucion, recibio, declaracion: respuesta.declaracion || c.condicion });
       delete estado.condiciones[p.folio];
       devueltos.push(p);
     }
@@ -758,20 +732,17 @@ async function devolverPrestamos(lista, boton) {
   pintarTodo();
   // En modo devolución, si ya no queda nada pendiente se muestra la pantalla de éxito
   if (estado.modo === "devolver" && !pendientesDelTrabajador().length) return mostrarExitoDevolucion(devueltos);
-  const incidencias = devueltos.filter((p) => p.incidencia).length;
-  mostrarAviso((devueltos.length === 1 ? `${devueltos[0].folio} devuelto` : `${devueltos.length} instrumentos devueltos`)
-    + (incidencias ? ` · ${plural(incidencias, "incidencia reportada", "incidencias reportadas")}` : ""));
+  mostrarAviso((devueltos.length === 1 ? `${devueltos[0].folio} recibido` : `${devueltos.length} instrumentos recibidos`) + " · pendiente de revisión del encargado");
   pintarHistorial();
 }
 
 function mostrarExitoDevolucion(devueltos) {
   const ultimo = devueltos[devueltos.length - 1];
-  $("exitoTitulo").textContent = "Devolución registrada";
+  $("exitoTitulo").textContent = "Devolución recibida";
   $("exitoEtiqueta").textContent = devueltos.length === 1 ? "Folio" : "Instrumentos devueltos";
   $("exitoFolio").textContent = devueltos.length === 1 ? ultimo.folio : devueltos.length;
-  const incidencias = devueltos.filter((p) => p.incidencia);
-  $("exitoResumen").textContent = `${devueltos.map((p) => `${p.cantidad} × ${p.instrumento}`).join(", ")} de ${estado.trabajador.nombre} · ${ultimo.fecha_devolucion} a las ${ultimo.hora_devolucion} h`
-    + (incidencias.length ? ` · ${plural(incidencias.length, "incidencia reportada", "incidencias reportadas")} (${incidencias.map((p) => p.incidencia).join(", ")})` : "");
+  $("exitoResumen").textContent = `${devueltos.map((p) => `${p.cantidad} × ${p.instrumento}`).join(", ")} de ${estado.trabajador.nombre} · ${ultimo.fecha_devolucion} a las ${ultimo.hora_devolucion} h. `
+    + "Deje el instrumento en la charola de devoluciones: el encargado lo revisará.";
   $("exitoBoton").textContent = "Nueva devolución";
   $("exitoTiempo").hidden = true;
   irAPaso("exito");
@@ -788,10 +759,13 @@ const mismoNombre = (a, b) => String(a).trim().toLowerCase() === String(b).trim(
 // Las piezas con una incidencia abierta (dañadas o esperando calibración) tampoco están disponibles.
 // Sin la columna "existencias" no se inventa el total: solo se sabe si hay piezas fuera.
 function disponibilidad(item) {
-  const abiertos = (estado.prestamos || []).filter((p) => p.estado !== "Devuelto" && mismoNombre(p.instrumento, item.instrumento));
+  const delItem = (estado.prestamos || []).filter((p) => mismoNombre(p.instrumento, item.instrumento));
+  const abiertos = delItem.filter((p) => p.estado === "Prestado");
   const fuera = abiertos.reduce((s, p) => s + p.cantidad, 0);
   const revision = incidenciasDe(item);
-  const enRevision = revision.reduce((s, i) => s + (parseInt(i.piezas, 10) || 1), 0);
+  // Devueltas por el trabajador pero aún sin revisar: cuentan como "en revisión"
+  const porRevisar = delItem.filter((p) => p.estado === "Por revisar").reduce((s, p) => s + p.cantidad, 0);
+  const enRevision = revision.reduce((s, i) => s + (parseInt(i.piezas, 10) || 1), 0) + porRevisar;
   const base = { abiertos, revision, libres: null };
   if (calibracion(item).nivel === "vencida") return { ...base, nivel: "agotado", texto: "Calibración vencida", libres: 0 };
 
@@ -1020,16 +994,19 @@ function salirMant() {
 }
 $("btnSalirMant").addEventListener("click", salirMant);
 
-// Número rojo en la pestaña: incidencias sin resolver + calibraciones vencidas
+const HORAS_REVISION = 4;   // una devolución sin revisar por más tiempo se marca en ámbar
+const porRevisar = () => (estado.prestamos || []).filter((p) => p.estado === "Por revisar");
+
+// Número rojo en la pestaña: devoluciones por revisar + incidencias sin resolver + calibraciones vencidas
 function pintarContadorMant() {
-  const n = estado.incidencias.filter((i) => i.estado !== "Resuelta").length
+  const n = porRevisar().length + estado.incidencias.filter((i) => i.estado !== "Resuelta").length
     + estado.catalogo.filter((c) => calibracion(c).nivel === "vencida").length;
   $("mantContador").textContent = n;
   $("mantContador").hidden = !n;
 }
 
 // Fila de las listas de mantenimiento
-function crearFilaMant(titulo, detalle, extra, insignia, textoBoton, alTocar) {
+function crearFilaMant(titulo, detalle, extra, insignia, botones) {
   const fila = crear("div", "pendiente grande mant-fila");
   fila.setAttribute("role", "listitem");
   const info = crear("div", "pendiente-info");
@@ -1037,13 +1014,15 @@ function crearFilaMant(titulo, detalle, extra, insignia, textoBoton, alTocar) {
   if (extra) info.append(crear("span", "mant-extra", extra));
   const lado = crear("div", "mant-lado");
   if (insignia) lado.append(crear("span", "insignia-estado " + insignia[0], insignia[1]));
-  const boton = crear("button", "btn btn-secundario pendiente-btn");
-  boton.type = "button";
-  boton.innerHTML = '<i data-lucide="wrench" aria-hidden="true"></i>';
-  boton.append(crear("span", "", textoBoton));
-  boton.setAttribute("aria-label", `${textoBoton}: ${titulo}`);
-  boton.addEventListener("click", alTocar);
-  lado.append(boton);
+  botones.forEach(([textoBoton, icono, alTocar, clase]) => {
+    const boton = crear("button", "btn pendiente-btn " + (clase || "btn-secundario"));
+    boton.type = "button";
+    boton.innerHTML = `<i data-lucide="${icono}" aria-hidden="true"></i>`;
+    boton.append(crear("span", "", textoBoton));
+    boton.setAttribute("aria-label", `${textoBoton}: ${titulo}`);
+    boton.addEventListener("click", () => alTocar(boton));
+    lado.append(boton);
+  });
   fila.append(info, lado);
   return fila;
 }
@@ -1061,7 +1040,10 @@ function pintarMantenimiento() {
   const conCal = estado.catalogo.map((item) => ({ item, cal: calibracion(item) }));
   const vencidas = conCal.filter((x) => x.cal.nivel === "vencida").sort((a, b) => a.cal.dias - b.cal.dias);
   const porVencer = conCal.filter((x) => x.cal.nivel === "porVencer").sort((a, b) => a.cal.dias - b.cal.dias);
-  $("mantResumen").textContent = `${plural(abiertas.length, "incidencia sin resolver", "incidencias sin resolver")} · ${plural(vencidas.length, "calibración vencida", "calibraciones vencidas")} · ${porVencer.length} por vencer`;
+  const revisar = porRevisar();
+  $("mantResumen").textContent = `${plural(revisar.length, "devolución por revisar", "devoluciones por revisar")} · ${plural(abiertas.length, "incidencia sin resolver", "incidencias sin resolver")} · ${plural(vencidas.length, "calibración vencida", "calibraciones vencidas")} · ${porVencer.length} por vencer`;
+
+  pintarRevisiones(revisar);
 
   pintarLista("mantIncidencias", abiertas.map((i) => {
     const item = estado.catalogo.find((c) => (i.clave ? c.clave === i.clave : mismoNombre(c.instrumento, i.instrumento)));
@@ -1069,18 +1051,122 @@ function pintarMantenimiento() {
     return crearFilaMant(`${i.piezas || 1} × ${i.instrumento}`,
       `${i.id} · ${i.condicion} · ${fechaISO(i.fecha)} · devolvió ${i.nombre} (${i.area}) · préstamo ${i.folio}`,
       i.observacion, enCal ? ["prestado", "Esperando calibración"] : ["abierta", "Abierta"],
-      enCal ? "Registrar calibración" : "Resolver",
-      () => (enCal && item ? abrirCalibrar(item) : abrirResolver(i)));
+      [[enCal ? "Registrar calibración" : "Resolver", "wrench", () => (enCal && item ? abrirCalibrar(item) : abrirResolver(i))]]);
   }), "No hay instrumentos dañados ni incompletos.");
 
   const filaCal = ({ item, cal }) => crearFilaMant(item.instrumento,
     `${item.clave} · ${cal.nivel === "vencida" ? "venció" : "vence"} el ${fechaCorta(cal.proxima)} · certificado ${cal.ultima.certificado || "—"}`,
     "", cal.nivel === "vencida" ? ["abierta", `Hace ${plural(-cal.dias, "día", "días")}`] : ["prestado", `En ${plural(cal.dias, "día", "días")}`],
-    "Registrar calibración", () => abrirCalibrar(item));
+    [["Registrar calibración", "wrench", () => abrirCalibrar(item)]]);
   pintarLista("mantVencidas", vencidas.map(filaCal), "Ningún instrumento tiene la calibración vencida.");
   pintarLista("mantPorVencer", porVencer.map(filaCal), `Ninguna calibración vence en los próximos ${DIAS_AVISO} días.`);
   pintarIconos();
 }
+
+/* ----- Devoluciones por revisar: el encargado confirma el estado real ----- */
+const horasDesde = (p) => (Date.now() - new Date(`${fechaISO(p.fecha_devolucion)}T${p.hora_devolucion || "00:00"}:00`)) / 3600000;
+
+function pintarRevisiones(lista) {
+  const caja = $("mantRevisar");
+  caja.innerHTML = "";
+  if (!lista.length) { caja.append(crear("p", "vacio-pendientes", "No hay devoluciones esperando revisión.")); return; }
+  // Agrupadas por trabajador, la más antigua primero
+  const grupos = new Map();
+  lista.slice().sort((a, b) => (fechaISO(a.fecha_devolucion) + a.hora_devolucion).localeCompare(fechaISO(b.fecha_devolucion) + b.hora_devolucion))
+    .forEach((p) => grupos.set(p.matricula, [...(grupos.get(p.matricula) || []), p]));
+  grupos.forEach((prestamos) => {
+    const cabeza = crear("div", "mant-trabajador");
+    cabeza.append(crear("strong", "", `${prestamos[0].nombre} · ${prestamos[0].area}`));
+    if (prestamos.length > 1) {
+      const todas = crear("button", "btn btn-secundario pendiente-btn");
+      todas.type = "button";
+      todas.innerHTML = '<i data-lucide="check-check" aria-hidden="true"></i>';
+      todas.append(crear("span", "", `Aprobar todas (${prestamos.length})`));
+      todas.addEventListener("click", () => aprobarTodas(prestamos, todas));
+      cabeza.append(todas);
+    }
+    caja.append(cabeza);
+    prestamos.forEach((p) => {
+      const [dijo, ...resto] = String(p.declaracion || "Bien").split(":");
+      const comentario = resto.join(":").trim();
+      const horas = horasDesde(p);
+      const tarde = horas > HORAS_REVISION;
+      const fila = crearFilaMant(`${p.cantidad} × ${p.instrumento}`,
+        `${p.folio} · devuelto ${fechaCorta(fechaISO(p.fecha_devolucion))} ${p.hora_devolucion} h${tarde ? ` · hace ${Math.floor(horas)} h sin revisar` : ""}`,
+        comentario ? `Comentario: ${comentario}` : "",
+        [dijo.trim() === "Bien" ? "devuelto" : "abierta", `Dijo: ${dijo.trim()}`],
+        [["Está bien", "circle-check", (b) => aprobar(p, b), "btn-principal"], ["Tiene un problema", "triangle-alert", () => abrirRevisar(p)]]);
+      if (tarde) fila.classList.add("tarde");
+      caja.append(fila);
+    });
+  });
+}
+
+// Guarda la revisión y actualiza la pantalla sin recargar
+async function enviarRevision(p, datos, boton, error) {
+  const r = await enviarMant({ accion: "revisar_devolucion", folio: p.folio, ...datos }, boton, error);
+  if (!r) return null;
+  Object.assign(p, { estado: "Devuelto", condicion: datos.condicion, observaciones: datos.observacion || "", reviso: datos.reviso,
+                     fecha_revision: r.fecha_revision, hora_revision: r.hora_revision, discrepancia: r.discrepancia });
+  if (r.incidencia) estado.incidencias.push({
+    id: r.incidencia, fecha: r.fecha_revision, hora: r.hora_revision, folio: p.folio,
+    clave: estado.catalogo.find((i) => mismoNombre(i.instrumento, p.instrumento))?.clave || "", instrumento: p.instrumento,
+    piezas: String(datos.piezas || 1), matricula: p.matricula, nombre: p.nombre, area: p.area,
+    condicion: datos.condicion, observacion: datos.observacion, estado: r.estado_incidencia || "Abierta"
+  });
+  return r;
+}
+
+const encargadoGuardado = () => { try { return localStorage.getItem(ENCARGADO) || ""; } catch (e) { return ""; } };
+
+async function aprobar(p, boton) {
+  const r = await enviarRevision(p, { condicion: "Bien", reviso: encargadoGuardado() }, boton, $("errorRevisar"));
+  if (!r) return;
+  mostrarAviso(`${p.folio} aprobado · ${p.instrumento} disponible`);
+  pintarTodo();
+}
+
+async function aprobarTodas(lista, boton) {
+  if (!confirm(`¿Aprobar las ${lista.length} devoluciones de ${lista[0].nombre} como «Bien»? Hágalo solo si ya revisó todos los instrumentos.`)) return;
+  let hechas = 0;
+  for (const p of lista) {
+    if (!(await enviarRevision(p, { condicion: "Bien", reviso: encargadoGuardado() }, boton, $("errorRevisar")))) break;
+    hechas++;
+  }
+  if (hechas) mostrarAviso(plural(hechas, "devolución aprobada", "devoluciones aprobadas"));
+  pintarTodo();
+}
+
+function abrirRevisar(p) {
+  estado.mantActual = p;
+  $("formRevisar").reset();
+  const [dijo, ...resto] = String(p.declaracion || "Bien").split(":");
+  // Si el trabajador ya reportó el problema, se propone lo que dijo
+  if (dijo.trim() === "Incompleto") $("formRevisar").elements.condicionRev.value = "Incompleto";
+  $("campoProblema").value = resto.join(":").trim();
+  const piezas = $("campoPiezasRev");
+  piezas.innerHTML = "";
+  for (let n = 1; n <= p.cantidad; n++) piezas.add(new Option(`${n} de ${p.cantidad}`, n));
+  $("grupoPiezasRev").hidden = p.cantidad <= 1;
+  prepararEncargado("campoReviso");
+  abrirDialogoMant(`${p.folio} · ${p.nombre}`, `${p.cantidad} × ${p.instrumento}`, `El trabajador declaró: ${p.declaracion || "Bien"}`, "formRevisar");
+}
+
+$("formRevisar").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const p = estado.mantActual;
+  const observacion = $("campoProblema").value.trim();
+  if (!observacion) { $("errorRevisar").textContent = "Describa qué le encontró al instrumento."; $("errorRevisar").hidden = false; $("campoProblema").focus(); return; }
+  const reviso = $("campoReviso").value.trim();
+  guardarEncargado(reviso);
+  const datos = { condicion: $("formRevisar").elements.condicionRev.value, observacion, piezas: Number($("campoPiezasRev").value) || 1,
+                  requiere_calibracion: $("campoReqCal").checked, reviso };
+  const r = await enviarRevision(p, datos, $("btnRevisar"), $("errorRevisar"));
+  if (!r) return;
+  $("mantDialogo").close();
+  mostrarAviso(`${r.incidencia} abierta · ${p.instrumento}` + (r.discrepancia === "Sí" ? " · discrepancia registrada" : ""));
+  pintarTodo();
+});
 
 // El nombre del encargado se recuerda en este iPad para no escribirlo cada vez
 const ENCARGADO = "managerlab.encargado";
@@ -1098,6 +1184,7 @@ function abrirDialogoMant(meta, titulo, descripcion, formulario) {
   $("mantDescripcion").hidden = !descripcion;
   $("formResolver").hidden = formulario !== "formResolver";
   $("formCalibrar").hidden = formulario !== "formCalibrar";
+  $("formRevisar").hidden = formulario !== "formRevisar";
   document.querySelectorAll("#mantDialogo .alerta-error").forEach((e) => (e.hidden = true));
   $("mantDialogo").showModal();
 }

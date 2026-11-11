@@ -168,10 +168,14 @@ function pintarAreas(lista) {
   const caja = $("graficaAreas");
   caja.innerHTML = "";
   if (!filas.length) { caja.innerHTML = '<p class="vacio">Sin préstamos en este periodo.</p>'; return; }
-  filas.forEach(([area, v]) => caja.appendChild(crearFilaBarra({
-    nombre: area, valor: v.piezas, maximo,
-    globo: `<strong>${escapar(area)}</strong>${plural(v.piezas, "pieza", "piezas")} · ${plural(v.prestamos, "préstamo", "préstamos")}`
-  })));
+  filas.forEach(([area, v]) => {
+    // Devoluciones donde el trabajador dijo "Bien" y el encargado encontró un problema
+    const disc = lista.filter((p) => p.area === area && p.discrepancia === "Sí").length;
+    caja.appendChild(crearFilaBarra({
+      nombre: area, detalle: disc ? plural(disc, "discrepancia", "discrepancias") : "", valor: v.piezas, maximo,
+      globo: `<strong>${escapar(area)}</strong>${plural(v.piezas, "pieza", "piezas")} · ${plural(v.prestamos, "préstamo", "préstamos")}${disc ? ` · ${plural(disc, "devolución con discrepancia", "devoluciones con discrepancia")}` : ""}`
+    }));
+  });
 }
 
 // Actividad: por hora si el periodo es "hoy"; si no, por día (máximo 30 columnas)
@@ -240,11 +244,11 @@ function pintarTabla(lista) {
   $("btnVerMas").textContent = tablero.verTodos ? "Ver menos" : `Ver los ${filas.length}`;
 }
 
-// Insignia Prestado / Devuelto (al pasar el mouse muestra cuándo se devolvió)
+// Insignia Prestado / Por revisar / Devuelto (al pasar el mouse muestra cuándo se devolvió)
 function insigniaEstado(p) {
-  const devuelto = p.estado === "Devuelto";
-  const titulo = devuelto ? ` title="Devuelto ${escapar(p.fecha_devolucion || "")} ${escapar(p.hora_devolucion || "")}"` : "";
-  return `<span class="insignia-estado ${devuelto ? "devuelto" : "prestado"}"${titulo}>${devuelto ? "Devuelto" : "Prestado"}</span>`;
+  const clase = { Devuelto: "devuelto", "Por revisar": "revisar" }[p.estado] || "prestado";
+  const titulo = clase !== "prestado" ? ` title="Devuelto ${escapar(p.fecha_devolucion || "")} ${escapar(p.hora_devolucion || "")}${p.discrepancia === "Sí" ? " · con discrepancia" : ""}"` : "";
+  return `<span class="insignia-estado ${clase}"${titulo}>${escapar(p.estado)}${p.discrepancia === "Sí" ? " ⚠" : ""}</span>`;
 }
 
 // Horas y minutos desde que salió el instrumento: "2 h 15 min", "3 d 4 h"
@@ -261,14 +265,16 @@ function tiempoFuera(p) {
 // No depende del periodo elegido: muestra el estado actual.
 function pintarFuera() {
   const fuera = tablero.prestamos
-    .filter((p) => p.estado !== "Devuelto")
+    .filter((p) => p.estado === "Prestado")   // "Por revisar" ya está en el laboratorio
     .sort((a, b) => (a.fecha + a.hora).localeCompare(b.fecha + b.hora));
+  const enCharola = tablero.prestamos.filter((p) => p.estado === "Por revisar").length;
   const piezas = fuera.reduce((s, p) => s + p.cantidad, 0);
   const vencidos = fuera.filter((p) => tiempoFuera(p).vencido).length;
 
   $("notaFuera").textContent = fuera.length
     ? `${plural(fuera.length, "préstamo abierto", "préstamos abiertos")} · ${plural(piezas, "pieza", "piezas")} fuera ahora${vencidos ? ` · ${vencidos} con más de ${HORAS_TURNO} h` : ""}`
     : "Todos los instrumentos están en el laboratorio.";
+  if (enCharola) $("notaFuera").textContent += ` · ${plural(enCharola, "devolución", "devoluciones")} por revisar`;
   $("filasFuera").innerHTML = fuera.length
     ? fuera.map((p) => {
         const t = tiempoFuera(p);
@@ -317,7 +323,7 @@ $("btnVerMas").addEventListener("click", () => { tablero.verTodos = !tablero.ver
 
 // Exporta los préstamos del periodo a CSV (Excel lo abre con acentos gracias al BOM)
 $("btnExportar").addEventListener("click", () => {
-  const columnas = ["folio", "fecha", "hora", "matricula", "nombre", "area", "jefe", "instrumento", "cantidad", "estado", "fecha_devolucion", "hora_devolucion", "recibio", "duracion_seg"];
+  const columnas = ["folio", "fecha", "hora", "matricula", "nombre", "area", "jefe", "instrumento", "cantidad", "estado", "fecha_devolucion", "hora_devolucion", "recibio", "duracion_seg", "declaracion", "condicion", "observaciones", "reviso", "fecha_revision", "hora_revision", "discrepancia"];
   const lineas = prestamosDelPeriodo().map((p) => columnas.map((c) => `"${String(p[c] ?? "").replace(/"/g, '""')}"`).join(","));
   const enlace = document.createElement("a");
   enlace.href = URL.createObjectURL(new Blob(["﻿" + [columnas.join(","), ...lineas].join("\r\n")], { type: "text/csv;charset=utf-8" }));

@@ -143,3 +143,4 @@
 .tiempo-fuera { display: inline-flex; align-items: center; gap: 6px; font-weight: 500; color: var(--texto); font-variant-numeric: tabular-nums; }
 .tiempo-fuera.vencido { color: var(--ambar-texto); }
 .tiempo-fuera svg.lucide { width: 18px; height: 18px; }
+.insignia-estado.revisar { background: rgba(182, 217, 252, .12); color: var(--azul-plano, #b6d9fc); box-shadow: inset 0 0 0 1px rgba(182, 217, 252, .3); }

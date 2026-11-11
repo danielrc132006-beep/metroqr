@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <!-- Fuentes de la plantilla: Inter (texto), Space Grotesk (títulos), JetBrains Mono (etiquetas) -->
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500&family=JetBrains+Mono:wght@400&display=swap">
-  <link rel="stylesheet" href="styles.css?v=20261108">
+  <link rel="stylesheet" href="styles.css?v=20261110">
 </head>
 <body>
 
@@ -227,7 +227,7 @@
       <form class="tarjeta mant-pin" id="formPin" novalidate>
         <span class="mant-pin-icono"><i data-lucide="lock" aria-hidden="true"></i></span>
         <h2>Acceso del encargado</h2>
-        <p class="nota">Escriba el PIN para marcar reparaciones y registrar calibraciones.</p>
+        <p class="nota">Escriba el PIN para revisar devoluciones, marcar reparaciones y registrar calibraciones.</p>
         <label for="campoPin" class="solo-lector">PIN del encargado</label>
         <input id="campoPin" class="campo num" type="password" inputmode="numeric" maxlength="8" autocomplete="off" placeholder="PIN">
         <p class="alerta-error" id="errorPin" role="alert" hidden></p>
@@ -235,6 +235,11 @@
       </form>
 
       <div class="mant-contenido" id="mantContenido" hidden>
+        <section class="tarjeta mant-grupo" aria-labelledby="tituloRevisar">
+          <h2 class="titulo-seccion" id="tituloRevisar">Devoluciones por revisar</h2>
+          <p class="nota">Revise cada instrumento de la charola y confirme cómo regresó. Hasta entonces no se puede prestar.</p>
+          <div class="pendientes" id="mantRevisar" role="list" aria-labelledby="tituloRevisar"></div>
+        </section>
         <section class="tarjeta mant-grupo" aria-labelledby="tituloIncidencias">
           <h2 class="titulo-seccion" id="tituloIncidencias">Instrumentos dañados o incompletos</h2>
           <div class="pendientes" id="mantIncidencias" role="list" aria-labelledby="tituloIncidencias"></div>
@@ -368,6 +373,34 @@
       <button class="btn btn-principal" id="btnResolver" type="submit"><i data-lucide="check" aria-hidden="true"></i><span>Guardar</span></button>
     </form>
 
+    <form class="mant-form" id="formRevisar" novalidate hidden>
+      <fieldset class="opciones">
+        <legend class="titulo-seccion">¿Qué le encontró?</legend>
+        <label class="opcion"><input type="radio" name="condicionRev" value="Dañado" checked>
+          <span><strong>Dañado</strong><small>Golpeado, doblado o no mide bien</small></span></label>
+        <label class="opcion"><input type="radio" name="condicionRev" value="Incompleto">
+          <span><strong>Incompleto</strong><small>Le falta una pieza, accesorio o el estuche</small></span></label>
+      </fieldset>
+      <div class="grupo">
+        <label for="campoProblema">Descripción (obligatoria)</label>
+        <input id="campoProblema" class="campo" maxlength="200" autocomplete="off" placeholder="Ej. punta doblada, falta el estuche">
+      </div>
+      <div class="mant-campos">
+        <div class="grupo" id="grupoPiezasRev">
+          <label for="campoPiezasRev">Piezas afectadas</label>
+          <select id="campoPiezasRev" class="campo"></select>
+        </div>
+        <div class="grupo">
+          <label for="campoReviso">Encargado</label>
+          <input id="campoReviso" class="campo" maxlength="60" autocomplete="off" placeholder="Nombre de quien revisa">
+        </div>
+      </div>
+      <label class="opcion"><input type="checkbox" id="campoReqCal">
+        <span><strong>Requiere calibración</strong><small>Queda bloqueado hasta registrar su calibración</small></span></label>
+      <p class="alerta-error" id="errorRevisar" role="alert" hidden></p>
+      <button class="btn btn-principal" id="btnRevisar" type="submit"><i data-lucide="triangle-alert" aria-hidden="true"></i><span>Registrar problema</span></button>
+    </form>
+
     <form class="mant-form" id="formCalibrar" novalidate hidden>
       <div class="mant-campos">
         <div class="grupo">
@@ -402,7 +435,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <!-- Código propio -->
   <!-- El ?v= obliga al navegador a bajar la versión nueva: cámbienlo (ej. la fecha) cada vez que actualicen archivos -->
-  <script src="config.js?v=20261108"></script>
-  <script src="app.js?v=20261108"></script>
+  <script src="config.js?v=20261110"></script>
+  <script src="app.js?v=20261110"></script>
 </body>
 </html>

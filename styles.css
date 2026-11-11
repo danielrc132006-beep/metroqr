@@ -662,3 +662,12 @@ select.campo option { background: var(--lienzo); color: var(--texto); }
   .pestana { min-width: 0; padding: 0 8px; gap: 6px; font-size: 15px; }
   .pestana svg.lucide { display: none; }   /* sin íconos para que quepan los 5 textos */
 }
+/* Devoluciones por revisar */
+.insignia-estado.revisar { background: rgba(182, 217, 252, .12); color: var(--azul-plano); box-shadow: inset 0 0 0 1px rgba(182, 217, 252, .3); }
+.mant-trabajador { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; color: var(--texto-titulo); }
+.mant-trabajador:first-child { margin-top: 0; }
+.mant-fila.tarde { box-shadow: inset 0 0 0 1px rgba(242, 196, 107, .55); }
+.mant-fila.tarde .pendiente-detalle { color: var(--ambar-texto); }
+.aviso-discrepancia { margin: 0 0 10px; font-size: 14px; font-weight: 500; color: var(--ambar-texto); }
+#formRevisar > .opcion { margin-bottom: 12px; }
+.mant-lado .btn-principal.pendiente-btn { width: auto; min-height: 44px; font-size: 15px; }
