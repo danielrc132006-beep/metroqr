@@ -319,6 +319,13 @@ select.campo option { background: var(--lienzo); color: var(--texto); }
 .cantidad-btn svg.lucide { width: 26px; height: 26px; stroke-width: 2; }
 .cantidad-btn:active:not(:disabled) { transform: scale(.94); }
 .cantidad-btn:disabled { opacity: .35; cursor: not-allowed; }
+#btnAgregar { flex: 1 1 100%; }
+.carrito { flex: 1 1 100%; display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.carrito-fila { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 8px 8px 16px; border-radius: 12px; background: rgba(186, 214, 247, .06); box-shadow: var(--linea); }
+.carrito-texto { color: var(--texto-titulo); }
+.carrito-quitar { display: grid; place-items: center; width: 44px; height: 44px; border: 0; border-radius: 50%; background: transparent; color: var(--texto-suave); }
+.carrito-quitar:hover { background: var(--vidrio-activo); color: var(--blanco); }
+.carrito-quitar svg.lucide { width: 20px; height: 20px; }
 .cantidad-valor { min-width: 56px; text-align: center; font-family: var(--fuente-titulo); font-size: 40px; font-weight: 500; color: var(--texto-titulo); }
 
 .accion {
@@ -343,6 +350,7 @@ select.campo option { background: var(--lienzo); color: var(--texto); }
   font-family: var(--fuente-titulo); font-size: 88px; font-weight: 500; line-height: 1; letter-spacing: -.01em;
   background: var(--degradado-cielo); -webkit-background-clip: text; background-clip: text; color: transparent;
 }
+.exito-folio.varios { font-size: 40px; line-height: 1.2; max-width: 100%; overflow-wrap: anywhere; }
 .exito-resumen { font-size: 18px; max-width: 46ch; margin-top: 8px; color: var(--texto-suave); }
 .exito .btn-blanco { margin-top: 24px; }
 .exito-cuenta { font-family: var(--fuente-mono); font-size: 13px; color: var(--texto-ayuda); font-variant-numeric: tabular-nums; }

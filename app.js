@@ -15,6 +15,7 @@ const estado = {
   trabajador: null,    // trabajador identificado en el préstamo actual
   instrumento: null,   // instrumento elegido
   cantidad: 1,
+  carrito: [],         // instrumentos ya agregados al préstamo: [{item, cantidad}]
   guardando: false,    // evita registros dobles
   credencialLista: false,
   modo: "prestar",     // "prestar" o "devolver"
@@ -149,7 +150,7 @@ function irAPaso(paso) {
 // Actualiza el indicador 1 → 2 → 3 según lo que ya se completó
 function actualizarProgreso() {
   const enExito = !$("pasoExito").hidden;
-  const pasoActual = enExito ? 4 : !estado.trabajador ? 1 : !estado.instrumento ? 2 : 3;
+  const pasoActual = enExito ? 4 : !estado.trabajador ? 1 : !lineasPrestamo().length ? 2 : 3;
   document.querySelectorAll("#progreso li").forEach((li) => {
     const n = Number(li.dataset.paso);
     li.classList.toggle("hecho", n < pasoActual);
@@ -254,6 +255,8 @@ function identificarTrabajador(trabajador, inicio) {
   estado.trabajador = trabajador;
   estado.instrumento = null;
   estado.cantidad = CANTIDAD_MIN;
+  estado.carrito = [];
+  pintarCarrito();
   pintarTrabajador(trabajador);
   pintarCatalogo();
   actualizarCantidad();
@@ -369,23 +372,74 @@ function seleccionarInstrumento(item) {
   $("errorPrestamo").hidden = true;
 }
 
-// Algunos instrumentos se prestan solo como juego (la nota dice "cantidad 1")
-// Tampoco se prestan más piezas de las que hay libres
-function cantidadMaxima() {
+const enCarrito = (item) => estado.carrito.find((l) => l.item.clave === item.clave);
+
+// Piezas que aún se pueden agregar del instrumento elegido.
+// Algunos instrumentos se prestan solo como juego (la nota dice "cantidad 1");
+// tampoco se prestan más piezas de las que hay libres, descontando lo que ya está en el carrito.
+function piezasRestantes() {
   if (!estado.instrumento) return CANTIDAD_MAX;
   const tope = /cantidad 1\b/i.test(estado.instrumento.notas || "") ? 1 : CANTIDAD_MAX;
   const libres = disponibilidad(estado.instrumento).libres;
-  return Math.max(CANTIDAD_MIN, libres == null ? tope : Math.min(tope, libres));
+  return Math.max(0, (libres == null ? tope : Math.min(tope, libres)) - (enCarrito(estado.instrumento)?.cantidad || 0));
+}
+const cantidadMaxima = () => Math.max(CANTIDAD_MIN, piezasRestantes());
+const puedeAgregar = () => Boolean(estado.instrumento) && estado.cantidad <= piezasRestantes();
+
+// Lo que se va a registrar: el carrito más el instrumento elegido que aún no se agregó
+// (así un préstamo de un solo instrumento no necesita tocar "Agregar")
+function lineasPrestamo() {
+  const lineas = estado.carrito.map((l) => ({ ...l }));
+  if (puedeAgregar()) {
+    const igual = lineas.find((l) => l.item.clave === estado.instrumento.clave);
+    if (igual) igual.cantidad += estado.cantidad;
+    else lineas.push({ item: estado.instrumento, cantidad: estado.cantidad });
+  }
+  return lineas;
 }
 
 function actualizarCantidad() {
   $("cantidadValor").textContent = estado.cantidad;
   $("btnMenos").disabled = estado.cantidad <= CANTIDAD_MIN;
   $("btnMas").disabled = estado.cantidad >= cantidadMaxima();
-  const listo = Boolean(estado.trabajador && estado.instrumento);
+  $("btnAgregar").disabled = !puedeAgregar() || estado.guardando;
+  const n = lineasPrestamo().length;
+  const listo = Boolean(estado.trabajador && n);
   $("btnRegistrar").disabled = !listo || estado.guardando;
+  if (!estado.guardando) $("btnRegistrar").querySelector("span").textContent = n > 1 ? `Registrar préstamo (${n} instrumentos)` : "Registrar préstamo";
   $("ayudaRegistrar").hidden = listo;
   actualizarProgreso();
+}
+
+// Pasa el instrumento elegido al carrito y deja libre la selección para elegir otro
+$("btnAgregar").addEventListener("click", () => {
+  if (!puedeAgregar()) return;
+  const igual = enCarrito(estado.instrumento);
+  if (igual) igual.cantidad += estado.cantidad;
+  else estado.carrito.push({ item: estado.instrumento, cantidad: estado.cantidad });
+  estado.instrumento = null;
+  estado.cantidad = CANTIDAD_MIN;
+  document.querySelectorAll(".instrumento").forEach((t) => t.setAttribute("aria-checked", "false"));
+  pintarCarrito();
+  actualizarCantidad();
+});
+
+function pintarCarrito() {
+  const lista = $("carrito");
+  lista.innerHTML = "";
+  lista.hidden = !estado.carrito.length;
+  estado.carrito.forEach((l, i) => {
+    const fila = crear("li", "carrito-fila", "");
+    fila.append(crear("span", "carrito-texto", `${l.cantidad} × ${l.item.instrumento}`));
+    const quitar = crear("button", "carrito-quitar", "");
+    quitar.type = "button";
+    quitar.setAttribute("aria-label", `Quitar ${l.item.instrumento}`);
+    quitar.innerHTML = '<i data-lucide="x" aria-hidden="true"></i>';
+    quitar.addEventListener("click", () => { estado.carrito.splice(i, 1); pintarCarrito(); actualizarCantidad(); });
+    fila.append(quitar);
+    lista.append(fila);
+  });
+  pintarIconos();
 }
 
 $("btnMenos").addEventListener("click", () => { estado.cantidad = Math.max(CANTIDAD_MIN, estado.cantidad - 1); actualizarCantidad(); });
@@ -398,7 +452,8 @@ $("btnMas").addEventListener("click", () => { estado.cantidad = Math.min(cantida
 $("btnRegistrar").addEventListener("click", registrarPrestamo);
 
 async function registrarPrestamo() {
-  if (estado.guardando || !estado.trabajador || !estado.instrumento) return;
+  const lineas = lineasPrestamo();
+  if (estado.guardando || !estado.trabajador || !lineas.length) return;
   estado.guardando = true;
   // Se detiene el cronómetro: el encargado ya confirmó el préstamo
   detenerCronometro();
@@ -415,12 +470,11 @@ async function registrarPrestamo() {
     const respuesta = await enviarApi({
       accion: "prestamo",
       matricula: estado.trabajador.matricula,
-      instrumento: estado.instrumento.instrumento,
-      cantidad: estado.cantidad,
+      items: lineas.map((l) => ({ instrumento: l.item.instrumento, cantidad: l.cantidad })),
       duracion: duracion          // segundos, para comparar contra el vale de papel
     });
     registrado = respuesta.ok;
-    if (respuesta.ok) mostrarExito(respuesta, duracion, segundosDesde(inicioGuardado));
+    if (respuesta.ok) mostrarExito(respuesta, lineas, duracion, segundosDesde(inicioGuardado));
     else mostrarErrorPrestamo(respuesta.error || "La API rechazó el préstamo.");
   } catch (error) {
     marcarConexion(false);
@@ -428,7 +482,6 @@ async function registrarPrestamo() {
   } finally {
     if (!registrado) iniciarCronometro();   // si falló, el tiempo sigue contando hasta que se registre
     estado.guardando = false;
-    boton.querySelector("span").textContent = "Registrar préstamo";
     actualizarCantidad();
   }
 }
@@ -440,21 +493,25 @@ function mostrarErrorPrestamo(mensaje) {
 
 // Pantalla de éxito: folio grande y regreso automático en 5 s
 let temporizadorRegreso = null;
-function mostrarExito(respuesta, duracion, guardado) {
+function mostrarExito(respuesta, lineas, duracion, guardado) {
   const t = respuesta.trabajador || estado.trabajador;
-  // Se agrega al historial local para que aparezca sin recargar
-  if (estado.prestamos) estado.prestamos.push(normalizarPrestamo({
-    folio: respuesta.folio, fecha: respuesta.fecha, hora: respuesta.hora, matricula: t.matricula,
-    nombre: t.nombre, area: t.area, jefe: t.jefe, instrumento: estado.instrumento.instrumento, cantidad: estado.cantidad, estado: "Prestado", duracion_seg: duracion
-  }));
+  // Un Apps Script sin actualizar devuelve solo "folio": se trata como un préstamo de un instrumento
+  const prestamos = respuesta.prestamos ||
+    [{ folio: respuesta.folio, instrumento: lineas[0].item.instrumento, cantidad: lineas[0].cantidad }];
+  // Se agregan al historial local para que aparezcan sin recargar
+  if (estado.prestamos) prestamos.forEach((p, n) => estado.prestamos.push(normalizarPrestamo({
+    folio: p.folio, fecha: respuesta.fecha, hora: respuesta.hora, matricula: t.matricula,
+    nombre: t.nombre, area: t.area, jefe: t.jefe, instrumento: p.instrumento, cantidad: p.cantidad, estado: "Prestado", duracion_seg: n === 0 ? duracion : ""
+  })));
   $("exitoTiempo").textContent = `Registrado en ${formatearDuracion(duracion)} · guardado en el servidor en ${guardado.toFixed(1)} s`;
   $("exitoTiempo").hidden = false;
   $("exitoTitulo").textContent = "Préstamo registrado";
-  $("exitoEtiqueta").textContent = "Folio";
+  $("exitoEtiqueta").textContent = prestamos.length > 1 ? "Folios" : "Folio";
   $("exitoBoton").textContent = "Nuevo préstamo";
-  $("exitoFolio").textContent = respuesta.folio;
+  $("exitoFolio").textContent = prestamos.map((p) => p.folio).join(" · ");
+  $("exitoFolio").classList.toggle("varios", prestamos.length > 1);
   $("exitoResumen").textContent =
-    `${estado.cantidad} × ${estado.instrumento.instrumento} para ${t.nombre} (${t.matricula}) · ${respuesta.fecha} a las ${respuesta.hora} h`;
+    `${prestamos.map((p) => `${p.cantidad} × ${p.instrumento}`).join(", ")} para ${t.nombre} (${t.matricula}) · ${respuesta.fecha} a las ${respuesta.hora} h`;
   irAPaso("exito");
   iniciarCuentaRegresiva();
 }
@@ -481,6 +538,8 @@ function reiniciarPrestamo() {
   estado.trabajador = null;
   estado.instrumento = null;
   estado.cantidad = CANTIDAD_MIN;
+  estado.carrito = [];
+  pintarCarrito();
   estado.condiciones = {};
   $("tiempoLectura").textContent = "";
   irAPaso(1);
