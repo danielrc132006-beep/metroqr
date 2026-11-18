@@ -21,9 +21,10 @@ const NOMBRES_DIA = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"];
    --------------------------------------------------------- */
 
 async function consultarApi(accion) {
-  const url = `${CONFIG.API_URL}?accion=${accion}&clave=${encodeURIComponent(CONFIG.API_CLAVE)}`;
+  const url = `${CONFIG.API_URL}?accion=${accion}&clave=${encodeURIComponent(claveApi())}`;
   const respuesta = await fetch(url, { redirect: "follow" });
   const datos = await respuesta.json();
+  if (datos.error === "Clave incorrecta") olvidarClave();
   if (!datos.ok) throw new Error(datos.error || "La API devolvió un error.");
   return datos.datos;
 }

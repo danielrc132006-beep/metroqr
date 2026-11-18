@@ -44,10 +44,11 @@ const CANTIDAD_MAX = 10;
 
 // Consulta con GET: catalogo, areas, personal o prestamos
 async function consultarApi(accion) {
-  const url = `${CONFIG.API_URL}?accion=${encodeURIComponent(accion)}&clave=${encodeURIComponent(CONFIG.API_CLAVE)}`;
+  const url = `${CONFIG.API_URL}?accion=${encodeURIComponent(accion)}&clave=${encodeURIComponent(claveApi())}`;
   const respuesta = await fetch(url, { redirect: "follow" });
   const datos = await respuesta.json();
   marcarConexion(true);
+  if (datos.error === "Clave incorrecta") olvidarClave();
   if (!datos.ok) throw new Error(datos.error || "La API devolvió un error.");
   return datos.datos;
 }
@@ -58,11 +59,12 @@ async function enviarApi(cuerpo) {
   const respuesta = await fetch(CONFIG.API_URL, {
     method: "POST",
     headers: { "Content-Type": "text/plain;charset=utf-8" },
-    body: JSON.stringify({ clave: CONFIG.API_CLAVE, ...cuerpo }),
+    body: JSON.stringify({ clave: claveApi(), ...cuerpo }),
     redirect: "follow"     // Apps Script responde con una redirección
   });
   const datos = await respuesta.json();
   marcarConexion(true);
+  if (datos.error === "Clave incorrecta") olvidarClave();
   return datos;            // {ok:true,...} o {ok:false, error}
 }
 
@@ -202,27 +204,41 @@ function mostrarCamaraInactiva(mensaje) {
 }
 $("btnActivarCamara").addEventListener("click", iniciarCamara);
 
-// Valida el texto del QR. Formato: {"m":"matrícula","n":"nombre","a":"área","j":"jefe"}
+// Devuelve la matrícula del QR o null. Las credenciales nuevas solo guardan {"m":"matrícula"};
+// las anteriores traían también nombre, área y jefe, pero esos datos ya no se usan: se leen de Personal.
 function leerCredencial(texto) {
   try {
     // qrcode.js agrega una marca BOM al inicio cuando hay acentos; se quita aquí
     const datos = JSON.parse(String(texto).replace(/^(﻿|ï»¿)/, ""));
-    const valido = /^\d{5,8}$/.test(datos.m) && typeof datos.n === "string" && datos.n.trim() !== ""
-      && typeof datos.a === "string" && typeof datos.j === "string";
-    return valido ? { matricula: datos.m, nombre: datos.n.trim(), area: datos.a, jefe: datos.j } : null;
+    return /^\d{5,8}$/.test(datos.m) ? String(datos.m) : null;
   } catch (e) {
     return null;
   }
 }
 
-// Se ejecuta cada vez que la cámara detecta un código QR
+// Se ejecuta cada vez que la cámara detecta un código QR (varias veces por segundo)
 function alLeerQR(texto) {
   const inicio = performance.now();   // prueba P3: tiempo desde la detección
-  if (!estado.trabajador && $("paso1").hidden === false) {
-    const trabajador = leerCredencial(texto);
-    if (!trabajador) return avisarQRInvalido(texto);   // la cámara sigue encendida
-    identificarTrabajador(trabajador, inicio);
+  if (estado.trabajador || $("paso1").hidden !== false || estado.buscandoQR) return;
+  const matricula = leerCredencial(texto);
+  if (!matricula) return avisarQRInvalido(texto);   // la cámara sigue encendida
+  estado.buscandoQR = true;
+  identificarPorMatricula(matricula, inicio)
+    .then((error) => { if (error) mostrarAviso(error); })
+    .finally(() => (estado.buscandoQR = false));
+}
+
+// Busca al trabajador en Personal. Devuelve un mensaje de error, o null si lo identificó.
+async function identificarPorMatricula(matricula, inicio) {
+  if (!estado.personal.length) {
+    try { estado.personal = await consultarApi("personal"); }
+    catch (err) { marcarConexion(false); return "No se pudo consultar el personal. Revise la conexión."; }
   }
+  const t = estado.personal.find((p) => mismaMatricula(p.matricula, matricula));
+  if (!t) return `No hay ningún trabajador con la matrícula ${matricula}.`;
+  if (String(t.activo || "").trim().toLowerCase() === "no") return `La credencial de ${t.nombre} está dada de baja.`;
+  identificarTrabajador({ ...t, matricula: String(t.matricula) }, inicio);
+  return null;
 }
 
 function avisarQRInvalido(texto) {
@@ -299,17 +315,10 @@ $("formBusqueda").addEventListener("submit", async (e) => {
   const error = $("errorBusqueda");
   if (!/^\d{5,8}$/.test(matricula)) { error.textContent = "Escriba una matrícula de 5 a 8 dígitos."; error.hidden = false; return; }
 
-  // Si la lista de personal no está cargada, se pide otra vez a la API
-  if (!estado.personal.length) {
-    try { estado.personal = await consultarApi("personal"); }
-    catch (err) { marcarConexion(false); error.textContent = "No se pudo consultar el personal. Revise la conexión."; error.hidden = false; return; }
-  }
-  const encontrado = estado.personal.find((p) => String(p.matricula) === matricula);
-  if (!encontrado) { error.textContent = `No hay ningún trabajador con la matrícula ${matricula}.`; error.hidden = false; return; }
-
+  const mensaje = await identificarPorMatricula(matricula, inicio);
+  if (mensaje) { error.textContent = mensaje; error.hidden = false; return; }
   error.hidden = true;
   $("inputBusqueda").value = "";
-  identificarTrabajador({ ...encontrado, matricula: String(encontrado.matricula) }, inicio);
 });
 
 /* ---------------------------------------------------------
@@ -977,10 +986,10 @@ $("formPin").addEventListener("submit", async (e) => {
   const boton = $("btnPin");
   boton.disabled = true;
   try {
-    const respuesta = await enviarApi({ accion: "pin", pin });
+    const respuesta = await enviarApi({ accion: "pin", pin, encargado: nombre });
     if (!respuesta.ok) throw new Error(respuesta.error || "PIN incorrecto");
     estado.pin = pin;
-    guardarEncargado(nombre);
+    guardarEncargado(respuesta.encargado || nombre);   // el nombre tal como está en la pestaña Encargados
     try { sessionStorage.setItem("managerlab.pin", pin); } catch (err) { /* sin almacenamiento */ }
     error.hidden = true;
     $("campoPin").value = "";
@@ -1235,9 +1244,9 @@ async function enviarMant(cuerpo, boton, error) {
   boton.disabled = true;
   error.hidden = true;
   try {
-    const respuesta = await enviarApi({ ...cuerpo, pin: estado.pin });
+    const respuesta = await enviarApi({ ...cuerpo, pin: estado.pin, encargado: encargadoGuardado() });
     if (!respuesta.ok) {
-      if (respuesta.error === "PIN incorrecto") { $("mantDialogo").close(); salirMant(); }
+      if (respuesta.error === "PIN incorrecto" || /intentos/.test(respuesta.error || "")) { $("mantDialogo").close(); salirMant(); }
       throw new Error(respuesta.error || "La API rechazó el registro.");
     }
     return respuesta;
@@ -1268,6 +1277,20 @@ $("formResolver").addEventListener("submit", async (e) => {
   mostrarAviso(resolucion === "Reparado" ? `${inc.instrumento} vuelve a estar disponible`
     : resolucion === "Baja" ? `${inc.instrumento} dado de baja` : `${inc.instrumento} queda esperando calibración`);
   pintarTodo();
+});
+
+$("campoBaja").addEventListener("input", (e) => (e.target.value = e.target.value.replace(/\D/g, "")));
+$("formBaja").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const matricula = $("campoBaja").value.trim(), error = $("errorBaja");
+  if (!/^\d{5,8}$/.test(matricula)) { error.textContent = "Escriba una matrícula de 5 a 8 dígitos."; error.hidden = false; return; }
+  const t = estado.personal.find((p) => mismaMatricula(p.matricula, matricula));
+  if (!window.confirm(`¿Dar de baja la credencial de ${t ? t.nombre : matricula}? Ya no podrá pedir préstamos.`)) return;
+  const r = await enviarMant({ accion: "baja_personal", matricula }, $("btnBaja"), error);
+  if (!r) return;
+  if (t) t.activo = "No";
+  $("campoBaja").value = "";
+  mostrarAviso(`Credencial de ${r.nombre} dada de baja`);
 });
 
 $("formCalibrar").addEventListener("submit", async (e) => {
@@ -1403,7 +1426,7 @@ function generarCredencial(t) {
   contenedorQR.innerHTML = "";
   if (!window.QRCode) { contenedorQR.textContent = "Sin QR"; mostrarAviso("No se pudo cargar qrcode.js"); return; }
   new QRCode(contenedorQR, {
-    text: textoParaQR({ m: String(t.matricula), n: t.nombre, a: t.area, j: t.jefe }),
+    text: textoParaQR({ m: String(t.matricula) }),   // solo la matrícula: los datos personales no viajan en el QR
     width: 512, height: 512,
     colorDark: "#1A2330", colorLight: "#FFFFFF",
     correctLevel: QRCode.CorrectLevel.H
@@ -1479,7 +1502,8 @@ function mostrarAviso(texto) {
 }
 
 // Autocomprobación rápida del lector de credenciales (aparece en la consola si falla)
-console.assert(leerCredencial('{"m":"104523","n":"Laura Méndez Ortiz","a":"Metrología","j":"Ing. Carlos Ruiz"}')?.matricula === "104523", "QR válido");
+console.assert(leerCredencial('{"m":"104523","n":"Laura Méndez Ortiz","a":"Metrología","j":"Ing. Carlos Ruiz"}') === "104523", "credencial anterior");
+console.assert(leerCredencial('{"m":"104523"}') === "104523", "credencial nueva");
 console.assert(leerCredencial('﻿{"m":"104523","n":"Ana López","a":"A","j":"J"}') !== null, "QR con BOM");
 console.assert(leerCredencial('{"m":"12","n":"Ana","a":"A","j":"J"}') === null, "matrícula corta");
 console.assert(leerCredencial("https://ejemplo.com") === null, "texto que no es JSON");
@@ -1490,7 +1514,7 @@ console.assert(disponibilidad({ instrumento: "Prueba", existencias: "2" }).nivel
 console.assert(fechaISO("08/11/2026") === "2026-11-08" && fechaISO("2026-1-5") === "2026-01-05" && fechaISO("ayer") === "", "fechas de la hoja");
 console.assert(sumarMeses("2026-01-31", 1) === "2026-02-28" && sumarMeses("2026-11-08", 12) === "2027-11-08", "próxima calibración");
 console.assert(calibracion({ clave: "X" }).nivel === "sin" && diasHasta(hoyISO()) === 0, "calibración sin registro");
-console.assert(leerCredencial(textoParaQR({ m: "104523", n: "Begoña Núñez", a: "Metrología", j: "Ing. Raúl" }))?.nombre === "Begoña Núñez", "acentos en el QR");
+console.assert(leerCredencial(textoParaQR({ m: "104523", n: "Begoña Núñez", a: "Metrología", j: "Ing. Raúl" })) === "104523", "acentos en el QR anterior");
 
 /* ---------------------------------------------------------
    Arranque

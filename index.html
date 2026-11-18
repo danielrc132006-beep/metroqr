@@ -227,7 +227,7 @@
       <form class="tarjeta mant-pin" id="formPin" novalidate>
         <span class="mant-pin-icono"><i data-lucide="lock" aria-hidden="true"></i></span>
         <h2>Acceso del encargado</h2>
-        <p class="nota">Escriba su nombre y el PIN para revisar devoluciones, marcar reparaciones y registrar calibraciones.</p>
+        <p class="nota">Escriba su nombre y su PIN personal para revisar devoluciones, marcar reparaciones y registrar calibraciones.</p>
         <label for="campoEncargado" class="solo-lector">Su nombre</label>
         <input id="campoEncargado" class="campo mant-nombre" maxlength="60" autocomplete="off" placeholder="Su nombre">
         <label for="campoPin" class="solo-lector">PIN del encargado</label>
@@ -255,6 +255,18 @@
           <div class="pendientes" id="mantPorVencer" role="list" aria-labelledby="tituloPorVencer"></div>
         </section>
         <p class="nota">Para calibrar cualquier otro instrumento, ábralo en el Catálogo y toque «Registrar calibración».</p>
+        <section class="tarjeta mant-grupo" aria-labelledby="tituloBaja">
+          <h2 class="titulo-seccion" id="tituloBaja">Dar de baja una credencial</h2>
+          <p class="nota">Para un trabajador que dejó la empresa: su credencial ya no sirve para pedir préstamos.</p>
+          <form class="busqueda" id="formBaja" novalidate>
+            <label for="campoBaja">Matrícula del trabajador</label>
+            <div class="busqueda-fila">
+              <input id="campoBaja" class="campo" inputmode="numeric" maxlength="8" autocomplete="off" placeholder="104523">
+              <button class="btn btn-principal-compacto" id="btnBaja" type="submit">Dar de baja</button>
+            </div>
+            <p class="alerta-error" id="errorBaja" role="alert" hidden></p>
+          </form>
+        </section>
       </div>
     </section>
 
@@ -369,7 +381,7 @@
       </div>
       <div class="grupo">
         <label for="campoResolvio">Encargado</label>
-        <input id="campoResolvio" class="campo" maxlength="60" autocomplete="off" placeholder="Nombre de quien lo resolvió">
+        <input id="campoResolvio" class="campo" maxlength="60" autocomplete="off" readonly placeholder="Nombre de quien lo resolvió">
       </div>
       <p class="alerta-error" id="errorResolver" role="alert" hidden></p>
       <button class="btn btn-principal" id="btnResolver" type="submit"><i data-lucide="check" aria-hidden="true"></i><span>Guardar</span></button>
@@ -394,7 +406,7 @@
         </div>
         <div class="grupo">
           <label for="campoReviso">Encargado</label>
-          <input id="campoReviso" class="campo" maxlength="60" autocomplete="off" placeholder="Nombre de quien revisa">
+          <input id="campoReviso" class="campo" maxlength="60" autocomplete="off" readonly placeholder="Nombre de quien revisa">
         </div>
       </div>
       <label class="opcion"><input type="checkbox" id="campoReqCal">
@@ -421,7 +433,7 @@
       </div>
       <div class="grupo">
         <label for="campoRegistro">Encargado</label>
-        <input id="campoRegistro" class="campo" maxlength="60" autocomplete="off" placeholder="Nombre de quien registra">
+        <input id="campoRegistro" class="campo" maxlength="60" autocomplete="off" readonly placeholder="Nombre de quien registra">
       </div>
       <p class="mant-proxima" id="proximaCal"></p>
       <p class="alerta-error" id="errorCalibrar" role="alert" hidden></p>
@@ -437,7 +449,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <!-- Código propio -->
   <!-- El ?v= obliga al navegador a bajar la versión nueva: cámbienlo (ej. la fecha) cada vez que actualicen archivos -->
-  <script src="config.js?v=20261111"></script>
-  <script src="app.js?v=20261111"></script>
+  <script src="config.js?v=20261117"></script>
+  <script src="app.js?v=20261117"></script>
 </body>
 </html>
